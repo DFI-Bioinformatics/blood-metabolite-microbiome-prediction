@@ -1,0 +1,462 @@
+---
+title: "AML Cohort Characteristics"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(tidyverse)
+library(here)
+library(patchwork)
+library(ape)
+
+```
+
+```{r}
+
+cohort_colors = c(
+  'AML' = '#D55E00',
+  'MICU' = '#7876B1FF',
+  'Healthy' = '#009E73'
+)
+
+cohort_shapes = c(
+  'AML' = 21,
+  'MICU' = 21,
+  'Healthy' = 24
+  )
+
+
+```
+
+```{r}
+
+source(here("R_scripts", "getRdpPal.R"))
+
+df_meta_hd = read.csv(here('data', 'df_meta_hd.csv'))
+df_meta = read.csv(here('data', 'df_meta.csv'))
+df_meta_mp = read.csv(here('data', 'df_meta_mp.csv'))
+
+df_mp = read.csv(here('data', 'df_mp.csv')) |> filter(statq == 'statq_0.20')
+df_mp_hd = read.csv(here('data', 'df_mp_hd.csv')) |> filter(statq == 'statq_0.20')
+
+selected_commensals = c('Lachnospiraceae', 'Oscillospiraceae', 'Bacteroidaceae')
+selected_pathogens = c('Enterococcaceae', 'Enterobacteriaceae')
+
+```
+
+```{r}
+
+mat_mps = df_mp |> 
+  filter(seq_id %in% df_meta$seq_id) |> 
+  left_join(df_meta |> select(sample_id, seq_id), by = 'seq_id') |> 
+  select(sample_id, species, ra) |> 
+  pivot_wider(id_cols = sample_id, names_from = species, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpf = mat_mps |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, family) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = family, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+
+mat_mps_hd = df_mp_hd |> 
+  filter(seq_id %in% df_meta_hd$seq_id) |> 
+  left_join(df_meta_hd |> select(sample_id, seq_id), by = 'seq_id') |> 
+  select(sample_id, species, ra) |> 
+  pivot_wider(id_cols = sample_id, names_from = species, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpf_hd = mat_mps_hd |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, family) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = family, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+
+```
+
+# Main
+
+## 1a) Taxplot
+
+```{r}
+
+
+df_meta_combined = rbind(
+  df_meta |> select(sample_id, seq_id, shannon, inv_simpson, richness) |> mutate(type = 'AML'),
+  df_meta_hd |> select(sample_id, seq_id, shannon, inv_simpson, richness) |> mutate(type = 'Healthy')
+  ) |>               
+  mutate(shannon = as.numeric(shannon))
+
+df_mp_combined = rbind(df_mp, df_mp_hd) |> 
+  rename(Kingdom = kingdom, Phylum = phylum, Class = class, Order = order, Family = family, Genus = genus) |> 
+  mutate(genLab = Genus, Genus = paste0(Phylum,"-",Order,"-", Family, "-",Genus)) 
+
+taxpalm = getRdpPal(df_mp_combined)
+
+lvls = df_meta_combined |> 
+  group_by(type, sample_id) |> 
+  arrange(shannon) |> 
+  ungroup() |> 
+  mutate(sample_id_reordered = factor(paste(sample_id, type, sep = "__"), levels = paste(sample_id, type, sep = "__"))) |>
+  select(sample_id, sample_id_reordered)
+
+p1 = df_mp_combined %>%
+  arrange(Kingdom, Phylum, Class, Order, Family, Genus, genLab) %>%
+  group_by(seq_id) %>%
+  arrange(Genus) %>%
+  ungroup() %>%
+  left_join(df_meta_combined %>% select(seq_id, sample_id, type, shannon)) %>% 
+  left_join(lvls, by = 'sample_id') |> 
+  ggplot(aes(x = sample_id_reordered, y = ra)) +
+  geom_bar(aes(fill = Genus), stat = "identity") +
+  scale_fill_manual(values = taxpalm) +
+  labs(y = "Relative Abundance", x = "") +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(), 
+    axis.ticks.x = element_blank(),
+    legend.position = "none",
+    plot.margin = unit(c(0,0,0,0), 'cm')
+    ) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_x_discrete(
+    guide = guide_axis(angle = 60),,
+    labels = function(x) gsub("__.+$", "", x)
+    ) +
+  scale_y_continuous(limits=c(0, 1.02), expand = c(0, 0))
+
+p2 = df_meta_combined |> 
+  left_join(lvls, by = 'sample_id') |> 
+  ggplot(aes(x = sample_id_reordered, y = shannon, fill = type)) +
+  geom_col() +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.text.x.top = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none',
+    plot.margin = unit(c(0,0,0,0), 'cm'),
+    ) +
+  scale_fill_manual(values = cohort_colors) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_x_discrete(
+    guide = guide_axis(angle = 60),
+    labels = function(x) gsub("__.+$", "", x)
+    ) +
+  labs(x = "", y = "Shannon Div")
+
+
+
+```
+
+```{r}
+
+
+taxa = c(
+  'family__Enterococcaceae', 
+  'family__Enterobacteriaceae', 
+  'family__Lachnospiraceae', 
+  'family__Streptococcaceae', 
+  'family__Oscillospiraceae', 
+  'family__Bifidobacteriaceae', 
+  'family__Bacteroidaceae'
+  )
+
+df_p_taxa = map_df(taxa, function(x) {
+    parts <- strsplit(x, "__")[[1]]
+    rbind(df_mp, df_mp_hd) %>%
+      filter(!!sym(parts[1]) == parts[2]) %>%
+      group_by(seq_id) %>%
+      summarise(ra = sum(ra), .groups = "drop") %>%
+      mutate(tax_level = parts[1], taxa = parts[2], .before = 1)
+  }) |> 
+  pivot_wider(id_cols = seq_id, names_from = taxa, values_from = ra, values_fill = 0) |> 
+  pivot_longer(!seq_id, names_to = 'taxa', values_to = 'ra')
+
+
+p3 = df_p_taxa |> 
+  left_join(df_meta_combined, by = 'seq_id') |> 
+  left_join(lvls, by = 'sample_id') |> 
+  filter(taxa %in% selected_commensals) |> 
+  mutate(taxa = factor(taxa, levels = rev(selected_commensals))) |> 
+  mutate(presence = ifelse(ra == 0, 0, 1)) |> 
+  ggplot(aes(x = sample_id_reordered, y = taxa, fill = presence)) +
+  geom_tile() +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.text.x.top = element_blank(),
+    strip.text.y.right = element_text(angle = 0),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none',
+    plot.margin = unit(c(0,0,0,0), 'cm'),
+    ) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_fill_gradient(high = '#0072B5FF', low = 'white', limits = c(0,1)) +
+  labs(x = "", y = "", fill = 'RA')
+
+p4 = df_p_taxa |> 
+  left_join(df_meta_combined, by = 'seq_id') |> 
+  left_join(lvls, by = 'sample_id') |> 
+  filter(taxa %in% selected_pathogens) |> 
+  mutate(taxa = factor(taxa, levels = rev(selected_pathogens))) |> 
+  mutate(presence = ifelse(ra == 0, 0, 1)) |> 
+  ggplot(aes(x = sample_id_reordered, y = taxa, fill = presence)) +
+  geom_tile() +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.text.x.top = element_blank(),
+    strip.text.y.right = element_text(angle = 0),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none',
+    plot.margin = unit(c(0,0,0,0), 'cm'),
+    ) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_fill_gradient(high = '#BC3C29FF', low = 'white', limits = c(0,1)) +
+  labs(x = "", y = "", fill = 'RA')
+  
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig1a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 6, width = 8)
+(p1 / p2 / p3 / p4) + plot_layout(heights = c(9,3,3,2))
+dev.off()
+
+
+```
+
+## 1b) Patient-wise Trends
+
+```{r}
+
+p1 = df_meta |>
+  count(study_id) |>
+  left_join(
+    df_meta |>
+      distinct(study_id, sex) |>
+      mutate(sex = ifelse(sex == 'male', 'M', 'F')),
+    by = 'study_id'
+    ) |> 
+  mutate(study_id = paste0(study_id, ' (', sex, ')')) |> 
+  
+  ggplot(aes(x = n, y = study_id)) +
+  geom_col(fill = "white", color = '#D55E00') +
+  theme_bw(base_size = 15) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(
+    x = "# Samples",
+    y = NULL
+  )
+
+p2 = ggplot(df_meta, aes(y = study_id, x = shannon)) +
+  geom_boxplot(width = .8, alpha = .7, outlier.shape = NA, color = "black") +
+  geom_point(fill = '#D55E00', pch=21, alpha = .7) +
+  scale_fill_viridis_c(option = "D") +
+  theme_bw(base_size = 15) +
+  theme(
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none'
+  ) +
+  labs(
+    y = NULL,
+    x = "Shannon Diversity"
+  ) 
+
+p3 = df_meta |> 
+  ggplot(aes(x = timeline_collected, y = study_id, fill = shannon)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = "D", name = "Shannon Diversity") +
+  theme_bw(base_size = 15) +
+  theme(
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'bottom'
+  ) +
+  scale_x_continuous(breaks = c(0,50,100,150,200,250,300)) +
+  labs(y = NULL, x = 'Day from Chemotherapy Start', fill = 'Shannon Div')
+
+p_1b = (p1 | p2 | p3) + plot_layout(widths = c(1,2,4))
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig1b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 6, width = 15)
+p_1b
+dev.off()
+
+```
+
+## 1c) Boxplots
+
+```{r}
+
+df_p = rbind(
+  as.data.frame(mat_mpf) |> 
+    rownames_to_column('sample_id') |> 
+    pivot_longer(!sample_id, names_to = 'var', values_to = 'value') |> 
+    mutate(type = 'AML'),
+  as.data.frame(mat_mpf_hd) |> 
+    rownames_to_column('sample_id') |> 
+    pivot_longer(!sample_id, names_to = 'var', values_to = 'value') |> 
+    mutate(type = 'Healthy'),
+  df_meta_combined |> 
+    mutate(var = 'Shannon Diversity') |> 
+    select(sample_id, var, value = shannon, type)
+) |> 
+  filter(var %in% c('Shannon Diversity', selected_commensals, selected_pathogens)) |> 
+  mutate(value = ifelse(var != 'Shannon Diversity', log10(value + min(value[value>0])*0.1), value)) |> 
+  mutate(var = factor(var, levels = c('Shannon Diversity', selected_commensals, selected_pathogens)))
+
+
+p_1c = df_p |> 
+  ggplot(aes(x = type, y = value, color = type)) +
+  geom_jitter(aes(color = type),
+              width = 0.15, height = 0, alpha = 0.7, size = 1.8, show.legend = F) +
+  geom_boxplot(aes(fill = type), width = 0.5, alpha = 0.5, outlier.shape = NA, color = "black") + 
+  facet_wrap(~var, scales = 'free_y', nrow = 2) +
+  scale_x_discrete(guide = guide_axis(angle = 0)) +
+  scale_color_manual(values = cohort_colors, guide = F) +
+  scale_fill_manual(values = cohort_colors, guide = F) +
+  theme_minimal(base_size = 15) +
+  stat_compare_means(
+    comparisons = list(c("AML", "Healthy")),
+    method = "wilcox.test",
+    label = "p.signif",  
+    bracket.size = 0.6,
+    tip.length = 0,
+    vjust = 0.1,
+    size=5
+    ) +
+  theme(
+    axis.line.y = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    panel.border = element_blank(),
+    strip.background = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none'
+    ) +
+  labs(x = "Cohort", y = NULL)
+
+
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig1c_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 5, width = 9)
+p_1c
+dev.off()
+
+```
+
+## 1d) Beta Diversity
+
+```{r}
+
+df_mp_combined = rbind(df_mp, df_mp_hd) 
+
+mat_df <- df_mp_combined %>%
+  left_join(df_meta_combined) |> 
+  mutate(feature = if_else(!is.na(species) & species != "", species, genus)) %>%  
+  select(sample_id, type, feature, ra) %>%
+  group_by(sample_id, type, feature) %>%                      
+  summarise(ra = sum(ra, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = feature, values_from = ra, values_fill = 0)
+
+meta <- mat_df %>% select(sample_id, type)
+mat  <- mat_df %>% select(-sample_id, -type) %>% as.matrix()
+rownames(mat) <- meta$sample_id
+
+bc <- vegdist(mat, method = "bray")
+perm <- adonis2(bc ~ type, data = meta, permutations = 999)
+disp <- betadisper(bc, group = meta$type)
+
+pcoa_res <- pcoa(as.dist(bc))
+pcoa_scores <- as.data.frame(pcoa_res$vectors[, 1:2])
+colnames(pcoa_scores) <- c("PC1", "PC2")
+pcoa_scores$sample_id <- rownames(pcoa_scores)
+pcoa_plot_df <- left_join(pcoa_scores, meta, by = "sample_id")
+
+eig <- pcoa_res$values$Relative_eig[1:2] * 100
+xlab_pcoa <- sprintf("PC1 (%.1f%%)", eig[1])
+ylab_pcoa <- sprintf("PC2 (%.1f%%)", eig[2])
+
+set.seed(333)
+nmds_res <- metaMDS(mat, distance = "bray", k = 2, trymax = 50, autotransform = FALSE)
+nmds_scores <- as.data.frame(scores(nmds_res, display = "sites"))
+colnames(nmds_scores) <- c("NMDS1", "NMDS2")
+nmds_scores$sample_id <- rownames(nmds_scores)
+nmds_plot_df <- left_join(nmds_scores, meta, by = "sample_id")
+nmds_stress <- nmds_res$stress
+
+
+p_1d_1 = pcoa_plot_df %>% 
+  ggplot(aes(x = PC1, y = PC2, fill = type, shape = type)) +
+  geom_point(size = 3) +
+  theme_classic(base_size = 15) +
+  scale_shape_manual(values = cohort_shapes) +
+  scale_fill_manual(values = cohort_colors) +
+  labs(title = 'PCoA (Bray Curtis)', fill = NULL) +
+  theme(panel.grid.minor = element_blank())
+
+p_1d_2 = nmds_plot_df %>% 
+  ggplot(aes(x = NMDS1, y = NMDS2, fill = type, shape = type)) +
+  geom_point(size = 3) +
+  theme_classic(base_size = 15) +
+  scale_shape_manual(values = cohort_shapes) +
+  scale_fill_manual(values = cohort_colors) +
+  labs(title = paste0("NMDS (Bray-Curtis) — stress=", round(nmds_stress, 2)), fill = NULL) +
+  theme(panel.grid.minor = element_blank())
+
+print(perm)
+anova(disp)
+
+```
+
+```{r}
+
+
+pdf(here('output', paste0('fig1d_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 7, width = 5)
+p_1d_1 / p_1d_2 + plot_layout(guides = 'collect') & theme(legend.position = 'bottom')
+dev.off()
+
+
+```

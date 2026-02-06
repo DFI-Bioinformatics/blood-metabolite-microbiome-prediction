@@ -1,0 +1,700 @@
+---
+title: "MICU Validation"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(tidyverse)
+library(here)
+library(patchwork)
+library(missForest)
+library(tidymodels)
+library(ggpubr)
+library(rstatix)
+library(vegan)
+
+source(here("R_scripts", "getRdpPal.R"))
+
+```
+
+```{r functions}
+
+rf_reg_validation = function(X_train, X_test, y_train, y_test, model_spec, seed_value = 333)
+{
+  df_train <- as.data.frame(X_train) %>% 
+    rownames_to_column('sample_id') %>% 
+    mutate(y = y_train)
+
+  df_test <- as.data.frame(X_test) %>%
+    rownames_to_column('sample_id') %>%
+    mutate(y = y_test)
+
+  recipe <- recipe(y ~ ., data = df_train) %>% 
+    update_role(sample_id, new_role = "ID")
+  
+  workflow <- workflow() %>%
+    add_recipe(recipe) %>%
+    add_model(model_spec)
+
+  set.seed(seed_value)
+  final_model = fit(workflow, df_train)
+  
+  df_pred = predict(final_model, df_test) %>%
+    bind_cols(df_test %>% select(sample_id, y))
+  
+  df_metrics = df_pred %>%
+    metrics(truth = y, estimate = .pred)
+  
+  return(list(
+    'df_metrics' = df_metrics, 
+    'df_pred' = df_pred
+    ))
+}
+
+ml_class_validation_taxa = function(X_train, X_test, y_train, y_test, model_spec, seed_value = 333)
+{
+  df_train = as.data.frame(X_train) %>% 
+    rownames_to_column('sample_id') %>% 
+    mutate(y = y_train)
+
+  df_test = as.data.frame(X_test) %>%
+    rownames_to_column('sample_id') %>%
+    mutate(y = y_test)
+
+  recipe <- recipe(y ~ ., data = df_train) %>% 
+    update_role(sample_id, new_role = "ID") |> 
+    step_normalize(all_predictors()) 
+
+  workflow <- workflow() %>%
+    add_recipe(recipe) %>%
+    add_model(model_spec)
+
+  set.seed(seed_value)
+  final_model = fit(workflow, df_train)
+
+  df_pred <- bind_cols(
+    predict(final_model, df_test, type = "prob"),
+    predict(final_model, df_test, type = "class"),
+    df_test %>% select(sample_id, y)
+  )
+  
+  df_metrics <- bind_rows(
+    df_pred %>% metrics(truth = y, estimate = .pred_class),
+    df_pred %>% roc_auc(truth = y, .pred_Present)
+    )
+  
+  return(list(
+    'df_metrics' = df_metrics, 
+    'df_pred' = df_pred,
+    'final_model' = final_model
+  ))
+  
+}
+
+
+plot_pred_act_val_reg = function(res, col = NULL)
+{
+  range_vals <- range(c(res$df_pred$y, res$df_pred$.pred))
+  p = res$df_pred %>%
+    ggplot(aes(x = y, y = .pred)) +
+    geom_point(size = 3, pch = 21) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+    labs(x = "Actual Shannon Diversity", y = "Predicted Shannon Diversity") +
+    annotate("text", 
+             x = min(range_vals) + diff(range_vals) * 0.05,
+             y = max(range_vals) - diff(range_vals) * 0.05,
+             label = sprintf("R² = %.2f", res$df_metrics$.estimate[res$df_metrics$.metric == "rsq"]),
+             hjust = .1, vjust = .5) +
+    scale_x_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+    scale_y_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+    theme_bw(base_size = 15) 
+  
+  if(!is.null(col)) p = p + geom_point(fill = col, pch = 21, size = 3, alpha = .6)
+  
+  return(p)
+}
+
+```
+
+```{r}
+
+cohort_colors = c(
+  'AML' = '#D55E00',
+  'MICU' = '#7876B1FF',
+  'Healthy' = '#009E73'
+)
+
+taxa_family_colors = c(
+  'Enterococcaceae' = "#129246", 
+  'Enterobacteriaceae' = "red", 
+  'Lachnospiraceae' = "#EC9B96", 
+  'Oscillospiraceae' = "#9AAE73", 
+  'Bacteroidaceae' = "#51AB9B"
+)
+```
+
+```{r}
+
+df_meta = read.csv(here('data', 'df_meta.csv'))
+df_meta_micu = read.csv(here('data', 'df_meta_micu.csv')) |> 
+  mutate(group = ifelse(mortality == 'Alive', 'Survivors', 'Non-survivors'))
+df_meta_hd = read.csv(here('data', 'df_meta_hd.csv'))
+
+df_meta_qual = read.csv(here('data', 'df_meta_qual.csv'))
+df_meta_mp = read.csv(here('data', 'df_meta_mp.csv'))
+
+df_mp = read.csv(here('data', 'df_mp.csv')) |> 
+  filter(statq == 'statq_0.20')
+
+df_mp_micu = read.csv(here('data', 'df_mp_micu.csv')) |> 
+  filter(statq == 'statq_0.20')
+
+df_mp_hd = read.csv(here('data', 'df_mp_hd.csv')) |> 
+  filter(statq == 'statq_0.20')
+
+mat_qual_plasma = read.csv(here('data', 'AML_plasma', 'mat_qual_plasma.csv')) |> 
+  column_to_rownames('X') |> 
+  as.matrix()
+
+mat_qual_plasma_micu = read.csv(here('data', 'MICU_plasma', 'mat_qual_plasma_sepsis.csv')) |> 
+  column_to_rownames('X') |> 
+  as.matrix()
+
+```
+
+```{r}
+
+
+mat_qual_plasma_micu = as.data.frame(mat_qual_plasma_micu) |> 
+  rownames_to_column('sample_id') |> 
+  select(-QUAL074) |> 
+  left_join(
+    read.csv(here('data', 'MICU_plasma', 'normalized_results_ST2677_isoUDCA_MDCA.csv'), check.names = F) |> 
+      rename(sample_id = sampleid) |> 
+      rename_with(~ case_when(
+        .x == "isoursodeoxycholic acid"  ~ "QUAL074_1",
+        .x == "murideoxycholic acid"  ~ "QUAL074_2",
+        T ~ .x
+      )) |> 
+      mutate(QUAL074_1 = ifelse(is.na(QUAL074_1), 0, QUAL074_1)) |>
+      mutate(QUAL074_2 = ifelse(is.na(QUAL074_2), 0, QUAL074_2)),
+    by = 'sample_id'
+    ) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+  
+
+mat_qual_plasma = as.data.frame(mat_qual_plasma) |> 
+  rownames_to_column('sample_id') |> 
+  select(-QUAL074) |> 
+  left_join(
+    rbind(
+      read.csv(here('data', 'AML_plasma', 'normalized_results_20251217_isoUDCA_MDCA_AMLplasma.csv'), check.names = F),
+      read.csv(here('data', 'AML_plasma', 'normalized_results_isoUDCA_MDCA_AML00112_AML00307.csv'), check.names = F)
+      ) |>  
+      mutate(sampleid = gsub('\\.', '', sampleid)) |> 
+      left_join(df_meta |> select(sampleid = metabolomics_id_plasma, sample_id), by = 'sampleid') |> 
+      select(-sampleid) |> 
+      rename_with(~ case_when(
+        .x == "isoursodeoxycholic acid"  ~ "QUAL074_1",
+        .x == "murideoxycholic acid"  ~ "QUAL074_2",
+        T ~ .x
+      )) |> 
+      mutate(QUAL074_1 = ifelse(is.na(QUAL074_1), 0, QUAL074_1)) |>
+      mutate(QUAL074_2 = ifelse(is.na(QUAL074_2), 0, QUAL074_2)),
+    by = 'sample_id'
+    ) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+```
+
+```{r}
+
+mat_mps = df_mp |> 
+  filter(seq_id %in% df_meta$seq_id) |> 
+  left_join(df_meta |> select(sample_id, seq_id), by = 'seq_id') |> 
+  select(sample_id, species, ra) |> 
+  pivot_wider(id_cols = sample_id, names_from = species, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpf = mat_mps |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, family) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = family, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mps_micu = df_mp_micu |> 
+  filter(seq_id %in% df_meta_micu$seq_id) |> 
+  left_join(df_meta_micu |> select(sample_id, seq_id), by = 'seq_id') |> 
+  select(sample_id, species, ra) |> 
+  pivot_wider(id_cols = sample_id, names_from = species, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpf_micu = mat_mps_micu |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, family) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = family, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mps_hd = df_mp_hd |> 
+  filter(seq_id %in% df_meta_hd$seq_id) |> 
+  left_join(df_meta_hd |> select(sample_id, seq_id), by = 'seq_id') |> 
+  select(sample_id, species, ra) |> 
+  pivot_wider(id_cols = sample_id, names_from = species, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpf_hd = mat_mps_hd |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, family) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = family, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+
+```
+
+```{r}
+
+mat_alphadiv = data.frame(
+  shannon = diversity(mat_mps, index = "shannon"),
+  inv_simpson = diversity(mat_mps, index = "invsimpson"),
+  richness = specnumber(mat_mps)
+) |> 
+  as.matrix()
+
+mat_alphadiv_micu = data.frame(
+  shannon = diversity(mat_mps_micu, index = "shannon"),
+  inv_simpson = diversity(mat_mps_micu, index = "invsimpson"),
+  richness = specnumber(mat_mps_micu)
+) |> 
+  as.matrix()
+
+
+```
+
+```{r}
+
+matrices_names = c('mat_mps', 'mat_mpf', 'mat_qual_plasma', 'mat_alphadiv')
+
+matrices = mget(matrices_names)
+common_rows = Reduce(intersect, lapply(matrices, rownames)) 
+matrices = lapply(matrices, function(m) m[common_rows, ])
+list2env(setNames(matrices, matrices_names), envir = .GlobalEnv)
+
+df_meta = df_meta[match(rownames(get(matrices_names[1])), df_meta$sample_id), ]
+df_mp = df_mp |> filter(seq_id %in% df_meta$seq_id)
+
+```
+
+```{r}
+
+matrices_names = c('mat_mps_micu', 'mat_mpf_micu', 'mat_qual_plasma_micu', 'mat_alphadiv_micu')
+
+matrices = mget(matrices_names)
+common_rows = Reduce(intersect, lapply(matrices, rownames)) 
+matrices = lapply(matrices, function(m) m[common_rows, ])
+list2env(setNames(matrices, matrices_names), envir = .GlobalEnv)
+
+df_meta_micu = df_meta_micu[match(rownames(get(matrices_names[1])), df_meta_micu$sample_id), ]
+df_mp_micu = df_mp_micu |> filter(seq_id %in% df_meta_micu$seq_id)
+
+```
+
+```{r}
+
+selected_commensals = c('Lachnospiraceae', 'Oscillospiraceae', 'Bacteroidaceae')
+selected_pathogens = c('Enterococcaceae', 'Enterobacteriaceae')
+
+selected_features  = c(
+  'QUAL016', # IPA
+  'QUAL074_1', # isoUDCA
+  "QUAL072", # isoDCA
+  "QUAL138", # isoCDCA
+  "QUAL058", # DCA
+  "QUAL065", # GDCA
+  "QUAL137", # GLCA-3S
+  "QUAL063" # GCA
+  )
+
+families_of_interest = c(
+  'Lachnospiraceae', 
+  'Oscillospiraceae', 
+  'Bacteroidaceae', 
+  'Enterococcaceae', 
+  'Enterobacteriaceae'
+  ) 
+```
+
+```{r}
+
+seed_value = 333
+n_folds = 5
+
+pseudo_mat_qual_plasma_micu = min(mat_qual_plasma_micu[mat_qual_plasma_micu > 0], na.rm = T)*0.1
+pseudo_mat_qual_plasma = min(mat_qual_plasma[mat_qual_plasma > 0], na.rm = T)*0.1
+
+```
+
+# Main
+
+## 4a) Taxplot
+
+```{r}
+
+df_meta_combined = rbind(
+  df_meta_micu |> select(sample_id, seq_id, shannon, inv_simpson, richness) |> mutate(type = 'MICU'),
+  df_meta_hd |> select(sample_id, seq_id, shannon, inv_simpson, richness) |> mutate(type = 'Healthy')
+  ) |>               
+  mutate(shannon = as.numeric(shannon)) |> 
+  mutate(type = factor(type, levels = c('MICU', 'Healthy')))
+
+df_mp_combined = rbind(
+  df_mp_micu |> 
+    left_join(df_meta_micu |> select(seq_id, sample_id)) |> 
+    select(-sample_id) |> 
+    relocate(seq_id, .before = kingdom), 
+  df_mp_hd
+  ) |> 
+  rename(Kingdom = kingdom, Phylum = phylum, Class = class, Order = order, Family = family, Genus = genus) |> 
+  mutate(genLab = Genus, Genus = paste0(Phylum,"-",Order,"-", Family, "-",Genus)) 
+
+taxpalm = getRdpPal(df_mp_combined)
+
+lvls = df_meta_combined |> 
+  group_by(type, sample_id) |> 
+  arrange(shannon) |> 
+  ungroup() |> 
+  mutate(sample_id_reordered = factor(paste(sample_id, type, sep = "__"), levels = paste(sample_id, type, sep = "__"))) |>
+  select(sample_id, sample_id_reordered)
+
+p1 = df_mp_combined %>%
+  arrange(Kingdom, Phylum, Class, Order, Family, Genus, genLab) %>%
+  group_by(seq_id) %>%
+  arrange(Genus) %>%
+  ungroup() %>%
+  left_join(df_meta_combined %>% select(seq_id, sample_id, type, shannon)) %>% 
+  left_join(lvls, by = 'sample_id') |> 
+  ggplot(aes(x = sample_id_reordered, y = ra)) +
+  geom_bar(aes(fill = Genus), stat = "identity") +
+  scale_fill_manual(values = taxpalm) +
+  labs(y = "Relative Abundance", x = "") +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(), 
+    axis.ticks.x = element_blank(),
+    legend.position = "none",
+    plot.margin = unit(c(0,0,0,0), 'cm')
+    ) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_x_discrete(
+    guide = guide_axis(angle = 60),,
+    labels = function(x) gsub("__.+$", "", x)
+    ) +
+  scale_y_continuous(limits=c(0, 1.02), expand = c(0, 0))
+
+p2 = df_meta_combined |> 
+  left_join(lvls, by = 'sample_id') |> 
+  ggplot(aes(x = sample_id_reordered, y = shannon, fill = type)) +
+  geom_col() +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.text.x.top = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none',
+    plot.margin = unit(c(0,0,0,0), 'cm'),
+    ) +
+  scale_fill_manual(values = cohort_colors) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_x_discrete(
+    guide = guide_axis(angle = 60),
+    labels = function(x) gsub("__.+$", "", x)
+    ) +
+  labs(x = "", y = "Shannon Div")
+
+```
+
+```{r}
+
+df_p_taxa = df_mp_combined |> 
+  group_by(seq_id, Family) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  pivot_wider(id_cols = seq_id, names_from = Family, values_from = ra, values_fill = 0) |> 
+  pivot_longer(!seq_id, names_to = 'taxa', values_to = 'ra')
+
+p3 = df_p_taxa |> 
+  left_join(df_meta_combined, by = 'seq_id') |> 
+  left_join(lvls, by = 'sample_id') |> 
+  filter(taxa %in% selected_commensals) |> 
+  mutate(taxa = factor(taxa, levels = rev(selected_commensals))) |> 
+  mutate(presence = ifelse(ra == 0, 0, 1)) |> 
+  ggplot(aes(x = sample_id_reordered, y = taxa, fill = presence)) +
+  geom_tile() +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.text.x.top = element_blank(),
+    strip.text.y.right = element_text(angle = 0),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none',
+    plot.margin = unit(c(0,0,0,0), 'cm'),
+    ) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_fill_gradient(high = '#0072B5FF', low = 'white', limits = c(0,1)) +
+  labs(x = NULL, y = NULL, fill = NULL)
+
+p4 = df_p_taxa |> 
+  left_join(df_meta_combined, by = 'seq_id') |> 
+  left_join(lvls, by = 'sample_id') |> 
+  filter(taxa %in% selected_pathogens) |> 
+  mutate(taxa = factor(taxa, levels = rev(selected_pathogens))) |> 
+  mutate(presence = ifelse(ra == 0, 0, 1)) |> 
+  ggplot(aes(x = sample_id_reordered, y = taxa, fill = presence)) +
+  geom_tile() +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.text.x.top = element_blank(),
+    strip.text.y.right = element_text(angle = 0),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'none',
+    plot.margin = unit(c(0,0,0,0), 'cm'),
+    ) +
+  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
+  scale_fill_gradient(high = '#BC3C29FF', low = 'white', limits = c(0,1)) +
+  labs(x = NULL, y = NULL, fill = NULL)
+  
+```
+
+```{r}
+
+pdf(here('output', paste0('fig5a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 6, width = 8)
+(p1 / p2 / p3 / p4) + plot_layout(heights = c(9,3,3,2))
+dev.off()
+
+```
+
+## 4b) Diversity Prediction
+
+```{r}
+
+
+X_train = mat_qual_plasma
+X_train = apply(X_train, 2, function(x) log10(x + pseudo_mat_qual_plasma))
+X_train = X_train[, selected_features]
+
+X_test = mat_qual_plasma_micu
+X_test = apply(X_test, 2, function(x) log10(x + pseudo_mat_qual_plasma_micu))
+X_test = X_test[, colnames(X_train)]
+
+y_train = mat_alphadiv[, 'shannon']
+y_test = mat_alphadiv_micu[, 'shannon']
+
+reg_rf_spec = rand_forest(
+  mtry = floor(sqrt(ncol(X_train))),
+  min_n = 5,
+  trees = 500
+  ) %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("regression")
+
+res = rf_reg_validation(X_train, X_test, y_train, y_test, reg_rf_spec, seed_value = 333)
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig5b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+plot_pred_act_val_reg(res, col = cohort_colors['MICU'])
+dev.off()
+
+```
+
+## 4c) Taxa Prediction
+
+```{r}
+
+X_train = mat_qual_plasma
+X_train = apply(X_train, 2, function(x) log10(x + pseudo_mat_qual_plasma))
+X_train = X_train[, selected_features]
+
+X_test = mat_qual_plasma_micu
+X_test = apply(X_test, 2, function(x) log10(x + pseudo_mat_qual_plasma_micu))
+X_test = X_test[, colnames(X_train)]
+
+Y_train = mat_mpf[, families_of_interest]
+Y_test = mat_mpf_micu[, families_of_interest]
+
+class_rf_spec = rand_forest(
+  mtry = floor(sqrt(ncol(X_train))),
+  min_n = 5,
+  trees = 500
+) %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("classification")
+
+
+res_rfclass_val_micu_mpf = list()
+for(col in colnames(Y_train))
+{
+  y_train = Y_train[, col]
+  y_train = factor(ifelse(y_train>0, 'Present', 'Absent'), levels = c('Present', 'Absent'))
+
+  y_test = Y_test[, col]
+  y_test = factor(ifelse(y_test>0, 'Present', 'Absent'), levels = c('Present', 'Absent'))
+
+
+  res_rfclass_val_micu_mpf[[col]] = ml_class_validation_taxa(X_train, X_test, y_train, y_test, 
+                                                        class_rf_spec, seed_value = 333)
+
+}
+
+```
+
+```{r}
+
+roc_data <- map_dfr(families_of_interest, function(taxon) {
+  dfp <- res_rfclass_val_micu_mpf[[taxon]]$df_pred
+  r <- roc(dfp$y, dfp$.pred_Present, quiet = TRUE)
+  coords(r, "all", ret = c("specificity", "sensitivity"), transpose = FALSE) %>%
+    as.data.frame() %>%
+    mutate(taxon = taxon, fpr = 1 - specificity, tpr = sensitivity)
+}) |> 
+  mutate(taxon = factor(taxon, levels = families_of_interest))
+
+auc_labels <- map_dfr(families_of_interest, function(taxon) {
+  dfp <- res_rfclass_val_micu_mpf[[taxon]]$df_pred
+  r <- roc(dfp$y, dfp$.pred_Present, quiet = TRUE)
+  ci <- ci.auc(r, method = "bootstrap", boot.n = 2000, quiet = TRUE)
+  tibble(
+    taxon = taxon, 
+    auc = as.numeric(auc(r)),
+    lo = as.numeric(ci[1]),
+    hi = as.numeric(ci[3])
+  )
+}) %>%
+  arrange(desc(auc)) %>%
+  mutate(label = sprintf("%s: %.2f [%.2f–%.2f]", taxon, auc, lo, hi))
+
+best_points <- map_dfr(families_of_interest, function(taxon) {
+  dfp <- res_rfclass_val_micu_mpf[[taxon]]$df_pred
+  r <- roc(dfp$y, dfp$.pred_Present, quiet = TRUE)
+  best <- coords(r, "best", best.method = "youden", ret = c("threshold", "specificity", "sensitivity"))
+  tibble(
+    taxon = taxon,
+    fpr = 1 - best$specificity,
+    tpr = best$sensitivity,
+    threshold = best$threshold
+  )
+})
+
+
+p_4c = ggplot(roc_data, aes(x = fpr, y = tpr, color = taxon)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey60") +
+  geom_path(linewidth = 1) +
+  geom_point(
+    data = best_points, aes(x = fpr, y = tpr, fill = taxon), 
+    size = 2, shape = 23, color = "black", stroke = 1
+    ) +
+  scale_color_manual(values = taxa_family_colors, labels = setNames(auc_labels$label, auc_labels$taxon), name = NULL) +
+  scale_fill_manual(values = taxa_family_colors) +
+  guides(fill = "none") +
+  labs(x = "False Positive Rate (1 - Specificity)", y = "True Positive Rate (Sensitivity)") +
+  theme_bw(base_size = 15) +
+  theme(legend.position = c(0.7, 0.25),
+        legend.background = element_blank())
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig5c_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_4c
+dev.off()
+
+```
+
+# Supplemental
+
+## Tables
+
+```{r}
+
+# Diversity
+
+res$df_pred |> 
+  select(sample_id, actual_shannon_div = y, pred_shannon_div = .pred) |> 
+  write.csv(here('output', 'tableS7_MICU_div_pred_vs_actual.csv'), row.names = F)
+
+# Taxa
+
+map_dfr(selected_commensals, function(taxa) {
+  res_rfclass_val_micu_mpf[[taxa]]$df_pred |> mutate(taxa = taxa)
+}) |> 
+  mutate(taxa = factor(taxa, levels = selected_commensals)) |> 
+  select(taxa, sample_id, actual = y, pred_present = .pred_Present, pred_absent = .pred_Absent) |> 
+  write.csv(here('output', 'tableS8_MICU_taxa_pred_vs_actual.csv'), row.names = F)
+
+
+```
+
+```{r}
+
+selected_commensals = c('Lachnospiraceae', 'Oscillospiraceae', 'Bacteroidaceae')
+
+
+as.data.frame(mat_mpf[, c(selected_commensals)]) |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'taxa', values_to = 'ra') |> 
+  mutate(presence = ifelse(ra > 0, 1, 0)) |> 
+  group_by(taxa) |> 
+  summarize(presence = sum(presence), .groups = 'drop') |> 
+  mutate(presence = presence / 194)
+
+
+as.data.frame(mat_mpf_micu[, c(selected_commensals)]) |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'taxa', values_to = 'ra') |> 
+  mutate(presence = ifelse(ra > 0, 1, 0)) |> 
+  group_by(taxa) |> 
+  summarize(presence = sum(presence), .groups = 'drop') |> 
+  mutate(presence = presence / 94)
+
+```

@@ -1,0 +1,579 @@
+---
+title: "MICU Validation"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(tidyverse)
+library(here)
+library(patchwork)
+library(missForest)
+library(tidymodels)
+library(ggpubr)
+library(rstatix)
+library(effsize)
+library(qvalue)
+library(ggrepel)
+library(survival)
+
+```
+
+```{r}
+
+
+calculate_non_parametric_stats <- function(continuous_var, binary_var) 
+{
+  binary_var <- droplevels(binary_var) 
+  delta_result <- cliff.delta(continuous_var, binary_var)
+  wilcox_test_result <- wilcox.test(continuous_var ~ binary_var)
+  return(tibble(
+    cliffs_delta = delta_result$estimate,
+    p_wilcox = wilcox_test_result$p.value
+  ))
+}
+
+calculate_parametric_stats <- function(continuous_var, binary_var) {
+  binary_var <- droplevels(as.factor(binary_var))
+  if (nlevels(binary_var) != 2) stop("binary_var must have 2 levels")
+
+  lvl <- levels(binary_var)
+  g1 <- continuous_var[binary_var == lvl[1]]
+  g2 <- continuous_var[binary_var == lvl[2]]
+
+  # Welch t-test
+  tt <- t.test(g1, g2, var.equal = FALSE)
+
+  # Cohen’s d (classic pooled)
+  n1 <- length(g1); n2 <- length(g2)
+  s1 <- sd(g1);     s2 <- sd(g2)
+  pooled_sd <- sqrt(((n1 - 1)*s1^2 + (n2 - 1)*s2^2) / (n1 + n2 - 2))
+  cohen_d <- (mean(g1) - mean(g2)) / pooled_sd
+
+  # Hedges g correction
+  J <- 1 - 3 / (4*(n1 + n2 - 2) - 1)
+  hedges_g <- cohen_d * J
+
+  tibble(
+    cohen_d = cohen_d,
+    hedges_g = hedges_g,
+    p_ttest = tt$p.value
+  )
+}
+
+plot_surv = function(df_survival, covariates, confounders = NULL, title = NULL) 
+{
+  
+  library(survival)
+  library(survminer)
+  
+  score_formula = as.formula(paste("Surv(time, event) ~", paste(covariates, collapse = " + ")))
+  score_fit = coxph(score_formula, data = df_survival)
+  df_survival$risk_score = predict(score_fit, type = "lp")
+  df_survival$risk_group = ifelse(df_survival$risk_score >= median(df_survival$risk_score), "High", "Low")
+  df_survival$risk_group = factor(df_survival$risk_group, levels = c("Low", "High"))
+  
+  if (!is.null(confounders)) {
+    full_formula <- as.formula(paste("Surv(time, event) ~", paste(c(covariates, confounders), collapse = " + ")))
+  } else {
+    full_formula <- score_formula
+  }
+  full_fit <- coxph(full_formula, data = df_survival)
+  c_index <- summary(full_fit)$concordance[1]
+  
+  
+  km_fit <- survfit(Surv(time, event) ~ risk_group, data = df_survival)
+  
+  if (is.null(title)) {
+    plot_title <- paste0("C-index = ", round(c_index, 3), " (adjusted)")
+  } else {
+    plot_title <- paste0(title, " (C = ", round(c_index, 3), ")")
+  }
+  
+  p = ggsurvplot(
+    km_fit,
+    data = df_survival,
+    pval = TRUE,
+    pval.coord = c(20, 0.2),
+    conf.int = TRUE,
+    risk.table = TRUE,
+    risk.table.height = 0.3,
+    risk.table.y.text = FALSE,
+    ggtheme = theme_classic(base_size = 15),
+    palette = c("#2E7D32", "#C62828"),
+    title = plot_title,
+    xlab = "Time (days)",
+    ylab = "Survival Probability",
+    xlim = c(0, 31),
+    break.time.by = 5,
+    legend.title = "Risk Group",
+    legend.labs = c("Low", "High")
+  )
+  
+  # Return plot and model results
+  list(
+    plot = p,
+    cox_unadjusted = score_fit,
+    cox_adjusted = full_fit,
+    c_index_adjusted = c_index,
+    risk_table = table(df_survival$risk_group, df_survival$event)
+  )
+}
+
+```
+
+```{r}
+
+df_meta_micu = read.csv(here('data', 'df_meta_micu.csv'))
+
+df_meta = read.csv(here('data', 'df_meta.csv'))
+
+df_meta_hd = read.csv(here('data', 'df_meta_hd.csv'))
+
+df_meta_qual = read.csv(here('data', 'df_meta_qual.csv'))
+df_meta_mp = read.csv(here('data', 'df_meta_mp.csv'))
+
+df_mp = read.csv(here('data', 'df_mp.csv')) |> 
+  filter(statq == 'statq_0.20')
+
+df_mp_micu = read.csv(here('data', 'df_mp_micu.csv')) |> 
+  filter(statq == 'statq_0.20')
+
+df_mp_hd = read.csv(here('data', 'df_mp_hd.csv')) |> 
+  filter(statq == 'statq_0.20')
+
+mat_qual_plasma = read.csv(here('data', 'AML_plasma', 'mat_qual_plasma.csv')) |> 
+  column_to_rownames('X') |> 
+  as.matrix()
+
+mat_qual_plasma_micu = read.csv(here('data', 'MICU_plasma', 'mat_qual_plasma_sepsis.csv')) |> 
+  column_to_rownames('X') |> 
+  as.matrix()
+
+mat_qual_plasma_micu = as.data.frame(mat_qual_plasma_micu) |> 
+  rownames_to_column('sample_id') |> 
+  select(-QUAL074) |> 
+  left_join(
+    read.csv(here('data', 'MICU_plasma', 'normalized_results_ST2677_isoUDCA_MDCA.csv'), check.names = F) |> 
+      rename(sample_id = sampleid) |> 
+      rename_with(~ case_when(
+        .x == "isoursodeoxycholic acid"  ~ "QUAL074_1",
+        .x == "murideoxycholic acid"  ~ "QUAL074_2",
+        T ~ .x
+      )) |> 
+      mutate(QUAL074_1 = ifelse(is.na(QUAL074_1), 0, QUAL074_1)) |>
+      mutate(QUAL074_2 = ifelse(is.na(QUAL074_2), 0, QUAL074_2)),
+    by = 'sample_id'
+    ) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+  
+```
+
+```{r}
+
+selected_features  = c(
+  'QUAL016', # IPA
+  'QUAL074_1', # isoUDCA
+  "QUAL072", # isoDCA
+  "QUAL138", # isoCDCA
+  "QUAL058", # DCA
+  "QUAL065", # GDCA
+  "QUAL137", # GLCA-3S
+  "QUAL063" # GCA
+  )
+
+micu_survival_colors = c(
+  'Non-survivors' = '#C62828', 
+  'Survivors' = '#FFA726', 
+  'Healthy Controls' = '#2E7D32'
+  )
+
+```
+
+# Main
+
+## 1a) Volcano
+
+```{r}
+
+df_cor_plamsamet_mortality = as.data.frame(mat_qual_plasma_micu) %>%
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = "compound_id", values_to = "value") %>%
+  left_join(df_meta_micu |> select(sample_id, mortality), by = 'sample_id') |> 
+  mutate(mortality = factor(mortality, levels = c('Alive', 'Deceased'))) |> 
+  group_by(compound_id) %>%
+  filter(n_distinct(mortality) == 2) %>%
+  mutate(
+    value_raw = value,
+    pseudo = min(value[value > 0], na.rm = T),
+    value = log10(value + min(value[value > 0], na.rm = T)*0.1)
+  ) |> 
+  summarise(
+    n_alive = sum(mortality == "Alive"),
+    n_deceased = sum(mortality == "Deceased"),
+    med_alive = median(value_raw[mortality == 'Alive']),
+    med_deceased = median(value_raw[mortality == 'Deceased']),
+    log2FC = log2((med_deceased + 0.00001) / (med_alive + 0.00001)),
+    stats1 = list(calculate_non_parametric_stats(value, mortality)), 
+    stats2 = list(calculate_parametric_stats(value, mortality)),
+    shapiro_alive = {
+      vals_alive = value[mortality == 'Alive']
+      if(length(vals_alive) >= 3 & var(vals_alive) > 0) {
+        shapiro.test(vals_alive)$p.value
+      } else NA
+    },
+    shapiro_deceased = {
+      vals_deceased = value[mortality == 'Deceased']
+      if(length(vals_deceased) >= 3 & var(vals_deceased) > 0) {
+        shapiro.test(vals_deceased)$p.value
+      } else NA
+    },
+    .groups = 'drop'
+  ) %>%
+  unnest(c(stats1, stats2)) |> 
+  mutate(normality = ifelse(shapiro_alive >= 0.05 & shapiro_deceased >= 0.05, 'Normal', 'Non-normal')) |> 
+  mutate(
+    p_wilcox_adj = p.adjust(p_wilcox, method = "BH"),
+    p_ttest_adj = p.adjust(p_ttest, method = "BH")
+  ) |> 
+  left_join(df_meta_qual |> select(compound_id, compound), by = 'compound_id') |> 
+  mutate(p_cat = case_when(
+    p_wilcox > 0.1 ~ '[> 0.1]',
+    p_wilcox > 0.05 & p_wilcox <= 0.1 ~ '[≤ 0.1]',
+    p_wilcox <= 0.05  ~ '[≤ 0.05]',
+    T ~ NA
+  )) |> 
+  mutate(p_cat = factor(p_cat, levels = c('[> 0.1]', '[≤ 0.1]', '[≤ 0.05]'))) 
+
+```
+
+```{r}
+
+compounds_to_label = union(selected_features, df_cor_plamsamet_mortality |> filter(p_wilcox < 0.05) |> pull(compound_id))
+
+p_5a = df_cor_plamsamet_mortality |>
+  mutate(hedges_g = hedges_g*-1) |> 
+  mutate(cat = ifelse(compound_id %in% selected_features, 'A', 'B')) |> 
+  ggplot(aes(x = hedges_g, y = -log10(p_wilcox), color = p_cat, text = compound, shape = cat)) +
+  geom_vline(xintercept = 0, linetype = 'dashed', color = 'black') +
+  geom_hline(yintercept = -log10(0.05), linetype = 'dashed', color = 'grey') +
+  geom_hline(yintercept = -log10(0.1), linetype = 'dashed', color = 'grey') +
+  geom_point(alpha = 0.7, size = 3) +
+  geom_text_repel(
+    data = \(d) d[d$compound_id %in% compounds_to_label, ],
+    aes(label = compound),
+    size = 4,
+    max.overlaps = Inf,
+    color = 'black'
+  ) +
+  theme_bw(base_size = 15) +
+  theme(legend.position = c(0.85, 0.2)) +
+  scale_color_manual(values = c(
+    '[> 0.1]' = 'grey', 
+    '[≤ 0.1]'= '#fd8d3c', 
+    '[≤ 0.05]' = '#bd0026'
+    )) +
+  scale_shape_manual(values = c('A' = 17, 'B' = 21)) +
+  xlim(-.75, .75) +
+  guides(shape = 'none', color = 'none') +
+  labs(x = "Hedges' g", y = "-log10[p-value]", color = 'FDR q-value')
+
+# ggplotly(p_5a, tooltip = 'text')
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig6a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_5a
+dev.off()
+
+```
+
+## 5b) Cox Models
+
+```{r}
+
+df_survival = df_meta_micu %>%
+  mutate(
+    time = ifelse(mortality == 'Deceased', days_to_death, 31),
+    event = ifelse(mortality == 'Deceased', 1, 0)
+  ) |> 
+  left_join(
+    as.data.frame(mat_qual_plasma_micu) %>%
+    rownames_to_column('sample_id') |> 
+    pivot_longer(!sample_id, names_to = "compound_id", values_to = "value") %>%
+    group_by(compound_id) %>%
+    mutate(value = log10(value + min(value[value>0], na.rm = T)*0.1)) |> 
+    pivot_wider(id_cols = sample_id, names_from = compound_id, values_from = value),
+    by = 'sample_id'
+    ) 
+
+metabolite_cols <- names(df_survival)[str_starts(names(df_survival), "QUAL")]
+metabolite_cols = c(metabolite_cols, 'sofa_score')
+
+cox_adjusted <- map_df(metabolite_cols, ~{
+  fit <- coxph(as.formula(paste("Surv(time, event) ~", .x, "+ age + sex + bmi")), 
+               data = df_survival)
+  coef_row <- which(names(coef(fit)) == .x)
+  data.frame(
+    compound_id = .x,
+    HR = exp(coef(fit)[coef_row]),
+    lower = exp(confint(fit)[coef_row, 1]),
+    upper = exp(confint(fit)[coef_row, 2]),
+    p = summary(fit)$coefficients[coef_row, "Pr(>|z|)"]
+  )
+}) %>%
+  left_join(df_meta_qual %>% select(compound_id, compound, hmmf_panel), by = "compound_id") %>%
+  arrange(p) |> 
+  mutate(
+    p_adj = p.adjust(p, method = 'BH'),
+    sig = case_when(
+      p < 0.001 ~ "***",
+      p < 0.01 ~ "**", 
+      p < 0.05 ~ "*",
+      T ~ ""
+    ),
+    p_label = sprintf("%.3f", p)
+  )
+
+
+p_5b = cox_adjusted %>% 
+  filter(compound_id %in% c(selected_features, 'sofa_score')) |>
+  mutate(compound = ifelse(compound_id == 'sofa_score', 'SOFA', compound)) |> 
+  mutate(
+    direction = ifelse(HR > 1, "Harmful", "Protective"),
+    sig_color = case_when(
+      p < 0.01 ~ "#D32F2F",
+      p < 0.05 ~ "#FF6B6B",
+      TRUE ~ "#9E9E9E"
+    )
+  ) %>%
+  mutate(compound = factor(compound, levels = rev(c('SOFA', 'GCA', 'GLCA-3S', 'GDCA', 'IPA', 'isoUDCA', 'DCA', 'isoDCA', 'isoCDCA')))) |> 
+  ggplot(aes(y = compound, x = HR)) +
+  geom_errorbarh(aes(xmin = lower, xmax = upper), width = 0, linewidth = 0.5, color = 'grey40') +
+
+  geom_vline(xintercept = 1, linetype = "solid", color = "black", linewidth = 0.5) +
+  geom_vline(xintercept = c(0.5, 2), linetype = "dotted", color = "grey70", linewidth = 0.3) +
+
+  geom_point(size = 3.5, shape = 15) +
+  scale_color_identity() +
+  geom_text(aes(x = max(upper), label = paste0("p = ",round(p, 3))), hjust = 0, size = 4, fontface = "bold") +
+  scale_x_log10(
+    breaks = c(0.2, 0.5, 1, 2, 5), 
+    labels = c("0.2", "0.5", "1.0", "2.0", "5"),
+    limits = c(0.2, 5)
+    ) +
+  labs(x = "Hazard Ratio (95% CI)", y = NULL) +
+  theme_bw(base_size = 15) +
+  theme(
+    panel.grid.major.x = element_line(color = "grey90", linewidth = 0.2),
+    panel.grid.minor.x = element_blank(),
+    panel.spacing = unit(0.3, "lines")
+  )
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig6b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_5b
+dev.off()
+
+```
+
+## 5c) Survival
+
+```{r}
+
+positive_mets <- c("QUAL016", "QUAL074_1", "QUAL072", "QUAL138", "QUAL058")
+negative_mets <- c("QUAL063", "QUAL137", "QUAL065")
+
+temp = df_survival |> 
+  mutate(across(all_of(selected_features), ~ scale(.)[,1], .names = "z_{.col}")) |> 
+  mutate(
+    panel_score = rowSums(across(all_of(paste0("z_", positive_mets)))) - 
+                  rowSums(across(all_of(paste0("z_", negative_mets))))
+  )
+
+
+
+
+```
+
+```{r}
+
+pdf(here('output', paste0('fig6c_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 5, width = 6)
+
+
+plot_surv(
+  df_survival, 
+  covariates = 'sofa_score', 
+  confounders = c("age", "sex", "bmi"),
+  title = "Sofa Score"
+  )
+
+plot_surv(
+  temp, 
+  covariates = 'panel_score', 
+  confounders = c("age", "sex", "bmi"),
+  title = "8 Metabolite Panel"
+  )
+
+
+dev.off()
+
+```
+
+# Supplemental
+
+## Tables
+
+```{r}
+
+library(writexl)
+
+cox_adjusted |> 
+  mutate(compound = ifelse(compound_id == 'sofa_score', 'SOFA', compound)) |> 
+  select(compound, HR, CI_lower = lower, CI_upper = upper, p, p_adj) |> 
+  write_xlsx(here('output', 'tableS9_CoxModels.xlsx'))
+
+
+```
+
+## S4a) Boxplots
+
+```{r}
+
+df_p = as.data.frame(mat_qual_plasma_micu) %>%
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = "compound_id", values_to = "value") %>%
+  left_join(df_meta_micu |> select(sample_id, group), by = 'sample_id') |> 
+  mutate(group = factor(group, levels = c('Survivors', 'Non-survivors'))) |> 
+  mutate(
+    value_raw = value,
+    value = log10(value + min(value[value > 0], na.rm = T)*0.1)
+  ) |> 
+  filter(compound_id %in% selected_features) |> 
+  left_join(df_meta_qual |> select(compound_id, compound), by = 'compound_id') |> 
+  mutate(compound_id = factor(compound_id, levels = selected_features)) |> 
+  arrange(compound_id) |> 
+  mutate(compound = factor(compound, levels = unique(compound))) 
+
+
+p_s4a = df_p |> 
+  ggplot(aes(x = group, y = value, color = group)) +
+  geom_jitter(aes(color = group),
+              width = 0.15, height = 0, alpha = 0.7, size = 1.8, show.legend = F) +
+  geom_boxplot(aes(fill = group), width = 0.5, alpha = 0.4, outlier.shape = NA, color = "black") + 
+  facet_wrap(~compound, scales = 'free_y', ncol = 4) +
+  scale_x_discrete(guide = guide_axis(angle = 0)) +
+  scale_fill_manual(values = micu_survival_colors, name = "") +
+  scale_color_manual(values = micu_survival_colors, guide = 'none') +
+  stat_compare_means(
+    comparisons = list(c("Survivors", "Non-survivors")),
+    method = "wilcox.test",
+    label = "p.signif",  
+    bracket.size = 0.5,
+    tip.length = 0
+    ) +
+  labs(x = NULL, y = "log10(Normalized Peak Area)") +
+  theme_bw() +
+  theme(
+      axis.line.y = element_line(color = "black"),
+      axis.line.x = element_line(color = "black"),
+      panel.border = element_blank(),
+      strip.background = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = 'none'
+    )
+
+pdf(here('output', paste0('figS4a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 7, width = 10)
+p_s4a
+dev.off()
+
+
+```
+
+## KM Curves
+
+```{r}
+
+
+
+plot_surv(
+  df_survival, 
+  covariates = 'QUAL074_1', 
+  confounders = c("age", "sex", "bmi"),
+  title = "MDCA"
+  )
+
+plot_surv(
+  df_survival, 
+  covariates = 'QUAL074_1', 
+  confounders = c("age", "sex", "bmi"),
+  title = "isoUDCA"
+  )
+
+plot_surv(
+  df_survival, 
+  covariates = 'QUAL072', 
+  confounders = c("age", "sex", "bmi"),
+  title = "isoDCA"
+  )
+
+plot_surv(
+  df_survival, 
+  covariates = 'QUAL063', 
+  confounders = c("age", "sex", "bmi"),
+  title = "GCA"
+  )
+
+
+```
+
+## KM Contours
+
+```{r}
+
+library(contsurvplot)
+library(riskRegression)
+
+plot_surv_contour(
+  time = "time",
+  status = "event",
+  variable = "sofa_score",
+  data = df_survival,
+  model = coxph(as.formula(paste("Surv(time, event) ~ age + sex + bmi + sofa_score")), data = df_survival, x = T)
+  ) +
+  labs(x = "Time (Days)", y = "SOFA Score")
+
+plot_surv_contour(
+  time = "time",
+  status = "event",
+  variable = "QUAL019",
+  data = df_survival,
+  model = coxph(as.formula(paste("Surv(time, event) ~ age + sex + bmi + QUAL019")), data = df_survival, x = T)
+  ) +
+  labs(x = "Time (Days)", y = "KYNA")
+
+plot_surv_contour(
+  time = "time",
+  status = "event",
+  variable = "QUAL138",
+  data = df_survival,
+  model = coxph(as.formula(paste("Surv(time, event) ~ age + sex + bmi + QUAL138")), data = df_survival, x = T)
+  ) +
+  labs(x = "Time (Days)", y = "isoCDCA")
+
+```
+
+```{r}
+
+df_meta_micu |> 
+  count(mortality)
+
+```

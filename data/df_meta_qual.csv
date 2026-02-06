@@ -1,0 +1,151 @@
+﻿compound_id,hmmf_panel,compound,metabolite,category
+QUAL001,Tryptophan,3-HAA,Tryptophan:3-hydroxyanthranilic acid,Kynurenine pathway
+QUAL002,Tryptophan,5-HIAA,Tryptophan:5-hydroxyindoleacetate,Serotonin pathway
+QUAL003,Tryptophan,5-HTP,Tryptophan:5-hydroxy-l-tryptophan,Serotonin pathway
+QUAL004,Tryptophan,Anthranilic acid,Tryptophan:anthranilic acid,Kynurenine pathway
+QUAL005,Tryptophan,Biotin,Tryptophan:biotin,Vitamin
+QUAL006,Tryptophan,DAT,Tryptophan:desaminotyrosine,Microbial phenolic
+QUAL007,Tryptophan,Dopamine,Tryptophan:dopamine,Biogenic amine
+QUAL008,Tryptophan,Epinephrine,Tryptophan:epinephrine,Biogenic amine
+QUAL009,Tryptophan,Folic acid,Tryptophan:folic acid,Vitamin
+QUAL010,Tryptophan,Glycine,Tryptophan:glycine,Amino acid
+QUAL011,Tryptophan,IAM,Tryptophan:indole-3-acetamide,Microbial indole
+QUAL012,Tryptophan,3-IAA,Tryptophan:indole-3-acetate,Microbial indole
+QUAL013,Tryptophan,IA,Tryptophan:indole-3-acrylate,Microbial indole
+QUAL014,Tryptophan,IAld,Tryptophan:indole-3-carboxaldehyde,Microbial indole
+QUAL015,Tryptophan,ILA,Tryptophan:indole-3-lactate,Microbial indole
+QUAL016,Tryptophan,IPA,Tryptophan:indole-3-propionate,Microbial indole
+QUAL017,Tryptophan,IPyA,Tryptophan:indole-3-pyruvate,Microbial indole
+QUAL018,Tryptophan,Indole,Tryptophan:indole,Microbial indole
+QUAL019,Tryptophan,KYNA,Tryptophan:kynurenic acid,Kynurenine pathway
+QUAL020,Tryptophan,KYN,Tryptophan:kynurenine,Kynurenine pathway
+QUAL021,Tryptophan,Melatonin,Tryptophan:melatonin,Serotonin pathway
+QUAL022,Tryptophan,NMS,Tryptophan:methylserotonin,Serotonin pathway
+QUAL023,Tryptophan,NAS,Tryptophan:n-acetylserotonin,Serotonin pathway
+QUAL024,Tryptophan,Niacin,Tryptophan:niacin,Kynurenine pathway
+QUAL025,Tryptophan,Pantothenic acid,Tryptophan:pantothenic acid,Vitamin
+QUAL026,Tryptophan,Phe,Tryptophan:phenylalanine,Substrate
+QUAL027,Tryptophan,PIC,Tryptophan:picolinic acid,Kynurenine pathway
+QUAL028,Tryptophan,PreQ1,Tryptophan:pre-q1,Microbial nucleoside
+QUAL029,Tryptophan,PLP,Tryptophan:pyridoxal phosphate,Vitamin
+QUAL030,Tryptophan,Queuine,Tryptophan:queuine,Microbial nucleoside
+QUAL031,Tryptophan,QUIN,Tryptophan:quinolinic acid,Kynurenine pathway
+QUAL032,Tryptophan,5-HT,Tryptophan:serotonin,Serotonin pathway
+QUAL033,Tryptophan,Tryptamine,Tryptophan:tryptamine,Microbial indole
+QUAL034,Tryptophan,Trp,Tryptophan:tryptophan,Substrate
+QUAL035,Tryptophan,TOH,Tryptophan:tryptophol,Microbial indole
+QUAL036,Tryptophan,Tyr,Tryptophan:tyrosine,Substrate
+QUAL037,BileAcid,12-oxoCDCA,BileAcid:12-oxochenodeoxycholic acid,Oxo-intermediate
+QUAL038,BileAcid,12-oxoLCA,BileAcid:12-oxolithocholic acid,Oxo-intermediate
+QUAL039,BileAcid,3-DCA,BileAcid:3-deoxycholic acid,Secondary
+QUAL040,BileAcid,3-oxoCA,BileAcid:3-oxocholic acid,Oxo-intermediate
+QUAL041,BileAcid,3-oxoLCA,BileAcid:3-oxolithocholic acid,Oxo-intermediate
+QUAL042,BileAcid,3-oxoDCA or 3-oxoCDCA,BileAcid:3-oxodeoxycholic acid or 3-oxochenodeoxycholic acid,Oxo-intermediate
+QUAL043,BileAcid,"7,12-dioxoLCA",BileAcid:7-12-dioxolithocholic acid,Oxo-intermediate
+QUAL044,BileAcid,7-oxoDCA,BileAcid:7-oxodeoxycholic acid,Oxo-intermediate
+QUAL045,BileAcid,7-oxoLCA or 6-oxoLCA,BileAcid:7-oxolithocholic acid or 6-oxolithocholic acid,Oxo-intermediate
+QUAL046,BileAcid,alloCA,BileAcid:allocholic acid,Allo-epimer
+QUAL047,BileAcid,alloisoLCA,BileAcid:alloisolithocholic acid,Allo-epimer
+QUAL048,BileAcid,alloLCA,BileAcid:allolithocholic acid,Allo-epimer
+QUAL049,BileAcid,α-MCA,BileAcid:alpha-muricholic acid,Murine
+QUAL050,BileAcid,β-HDCA,BileAcid:beta-hyodeoxycholic acid,6α-hydroxylated
+QUAL051,BileAcid,β-MCA,BileAcid:beta-muricholic acid,Murine
+QUAL052,BileAcid,CDCA,BileAcid:chenodeoxycholic acid,Primary
+QUAL053,BileAcid,CDCA-3S,BileAcid:chenodeoxycholic acid-3-sulfate,Primary sulfate
+QUAL054,BileAcid,Cholenic acid,BileAcid:cholenic acid,Other
+QUAL055,BileAcid,CA,BileAcid:cholic acid,Primary
+QUAL056,BileAcid,CA-3S,BileAcid:cholic acid-3-sulfate,Primary sulfate
+QUAL057,BileAcid,CA-7S,BileAcid:cholic acid-7-sulfate,Primary sulfate
+QUAL058,BileAcid,DCA,BileAcid:deoxycholic acid,Secondary
+QUAL059,BileAcid,DCA-3S or CDCA-7S,BileAcid:deoxycholic acid-3-sulfate or chenodeoxycholic acid-7-sulfate,Secondary sulfate
+QUAL060,BileAcid,γ-MCA,BileAcid:gamma-muricholic acid,Murine
+QUAL061,BileAcid,Gβ-MCA,BileAcid:glyco-beta muricholic acid,Murine
+QUAL062,BileAcid,GCDCA,BileAcid:glycochenodeoxycholic acid,Primary conjugate
+QUAL063,BileAcid,GCA,BileAcid:glycocholic acid,Primary conjugate
+QUAL064,BileAcid,GDHCA,BileAcid:glycodehydrocholic acid,Other
+QUAL065,BileAcid,GDCA,BileAcid:glycodeoxycholic acid,Secondary conjugate
+QUAL066,BileAcid,Gγ-MCA,BileAcid:glyco-gamma muricholic acid,Murine
+QUAL067,BileAcid,GHDCA,BileAcid:glycohyodeoxycholic acid,6α-hydroxylated
+QUAL068,BileAcid,GLCA,BileAcid:glycolithocholic acid,Secondary conjugate
+QUAL069,BileAcid,Gω-MCA,BileAcid:glyco-omega muricholic acid,Murine
+QUAL070,BileAcid,GUDCA,BileAcid:glycoursodeoxycholic acid,7β-epimer
+QUAL071,BileAcid,HDCA,BileAcid:hyodeoxycholic acid,6α-hydroxylated
+QUAL072,BileAcid,isoDCA,BileAcid:isodeoxycholic acid,3β-epimer
+QUAL073,BileAcid,isoLCA,BileAcid:isolithocholic acid,3β-epimer
+QUAL074_1,BileAcid,isoUDCA,BileAcid:isoursodeoxycholic acid,3β-epimer
+QUAL074_2,BileAcid,MDCA,BileAcid:murideoxycholic acid,Murine
+QUAL074,BileAcid,isoUDCA or MDCA,BileAcid:isoursodeoxycholic acid or murideoxycholic acid,3β-epimer
+QUAL075,BileAcid,LCA-3S,BileAcid:lithocholic acid-3-sulfate,Secondary sulfate
+QUAL076,BileAcid,LCA,BileAcid:lithocholic acid,Secondary
+QUAL077,BileAcid,ω-MCA ,BileAcid:omega-muricholic acid,Murine
+QUAL078,BileAcid,Tα-MCA or Tβ-MCA,BileAcid:tauro-alpha-muricholic acid or tauro-beta-muricholic acid,Murine
+QUAL079,BileAcid,TCDCA,BileAcid:taurochenodeoxycholic acid,Primary conjugate
+QUAL080,BileAcid,TCA-3S,BileAcid:taurocholic acid-3-sulfate,Primary sulfate
+QUAL081,BileAcid,TCA,BileAcid:taurocholic acid,Primary conjugate
+QUAL082,BileAcid,TDCA,BileAcid:taurodeoxycholic acid,Secondary conjugate
+QUAL083,BileAcid,THDCA,BileAcid:taurohyodeoxycholic acid,6α-hydroxylated
+QUAL084,BileAcid,TLCA,BileAcid:taurolithocholic acid,Secondary conjugate
+QUAL085,BileAcid,TUDCA,BileAcid:tauroursodeoxycholic acid,7β-epimer
+QUAL086,BileAcid,UCA,BileAcid:ursocholic acid,7β-epimer
+QUAL087,BileAcid,UDCA,BileAcid:ursodeoxycholic acid,7β-epimer
+QUAL088,PFBBr,2-methyl Butyrate,PFBBr:2-methylbutyrate,
+QUAL089,PFBBr,3-aminoiso Butyrate,PFBBr:3-aminoisobutyrate,
+QUAL090,PFBBr,4-methyl Valerate,PFBBr:4-methylvalerate,
+QUAL091,PFBBr,5-amino Valerate,PFBBr:5-aminovalerate,
+QUAL092,PFBBr,Acetate,PFBBr:acetate,
+QUAL093,PFBBr,Ala,PFBBr:alanine,
+QUAL094,PFBBr,Asp,PFBBr:aspartic acid,
+QUAL095,PFBBr,BA,PFBBr:benzoic acid,
+QUAL096,PFBBr,Butyrate,PFBBr:butyrate,
+QUAL097,PFBBr,Catechol,PFBBr:catechol,
+QUAL098,PFBBr,Crotonic acid,PFBBr:crotonic acid,
+QUAL099,PFBBr,Cys,PFBBr:cysteine,
+QUAL100,PFBBr,DAT,PFBBr:desaminotyrosine,
+QUAL101,PFBBr,Dopamine,PFBBr:dopamine,
+QUAL102,PFBBr,Glu,PFBBr:glutamic acid,
+QUAL103,PFBBr,Glycine,PFBBr:glycine,
+QUAL104,PFBBr,Hexanoate,PFBBr:hexanoate,
+QUAL105,PFBBr,Histamine,PFBBr:histamine,
+QUAL106,PFBBr,Hydrocinnamic acid,PFBBr:hydrocinnamic acid,
+QUAL107,PFBBr,3-IAA,PFBBr:indole-3-acetate,
+QUAL108,PFBBr,IA,PFBBr:indole-3-acrylate,
+QUAL109,PFBBr,IAld,PFBBr:indole-3-carboxaldehyde,
+QUAL110,PFBBr,IPA,PFBBr:indole-3-propionate,
+QUAL111,PFBBr,iso Butyrate,PFBBr:isobutyrate,
+QUAL112,PFBBr,Ile,PFBBr:isoleucine,
+QUAL113,PFBBr,iso Valerate,PFBBr:isovalerate,
+QUAL114,PFBBr,Itaconic acid,PFBBr:itaconic acid,
+QUAL115,PFBBr,Leu,PFBBr:leucine,
+QUAL116,PFBBr,Lys,PFBBr:lysine,
+QUAL117,PFBBr,Met,PFBBr:methionine,
+QUAL118,PFBBr,Palmitic acid,PFBBr:palmitic acid,
+QUAL119,PFBBr,P-Cresol,PFBBr:p-cresol,
+QUAL120,PFBBr,Phenol,PFBBr:phenol,
+QUAL121,PFBBr,Phenylacetate,PFBBr:phenylacetate,
+QUAL122,PFBBr,Phe,PFBBr:phenylalanine,
+QUAL123,PFBBr,Proline,PFBBr:proline,
+QUAL124,PFBBr,Propionate,PFBBr:propionate,
+QUAL125,PFBBr,Serine,PFBBr:serine,
+QUAL126,PFBBr,Succinate,PFBBr:succinate,
+QUAL127,PFBBr,Synephrine,PFBBr:synephrine,
+QUAL128,PFBBr,Threonine,PFBBr:threonine,
+QUAL129,PFBBr,Toluic acid,PFBBr:toluic acid,
+QUAL130,PFBBr,Tryptamine,PFBBr:tryptamine,
+QUAL131,PFBBr,Trp,PFBBr:tryptophan,
+QUAL132,PFBBr,Tyramine,PFBBr:tyramine,
+QUAL133,PFBBr,Tyr,PFBBr:tyrosine,
+QUAL134,PFBBr,Valerate,PFBBr:valerate,
+QUAL135,PFBBr,Valine,PFBBr:valine,
+QUAL136,PFBBr,Vanillin,PFBBr:vanillin,
+QUAL137,BileAcid,GLCA-3S,BileAcid:glycolithocholic acid 3-sulfate,Secondary sulfate
+QUAL138,BileAcid,isoCDCA,BileAcid:isochenodeoxycholic acid,3β-epimer
+QUAL139,BileAcid,TLCA-3S,BileAcid:taurolithocholic acid 3-sulfate,Secondary sulfate
+QUAL140,BileAcid,12-epi DCA,BileAcid:12-epideoxycholic acid,12-epimer
+QUAL141,BileAcid,3-12-dioxo-5-β-Cholanoic acid,BileAcid:3-12-dioxo-5-beta-cholanoic acid,Oxo-intermediate
+QUAL142,BileAcid,3-7-dioxo-5-β-Cholanoic acid,BileAcid:3-7-dioxo-5-beta-cholanoic acid,Oxo-intermediate
+QUAL143,BileAcid,DHCA,BileAcid:dehydrocholic acid,Oxo-intermediate
+QUAL144,BileAcid,GCDCA-3S,BileAcid:glycochenodeoxycholic acid-3-sulfate,Primary sulfate
+QUAL145,BileAcid,GDCA-3S,BileAcid:glycodeoxycholic acid-3-sulfate,Secondary sulfate
+QUAL146,BileAcid,UDCA-3S,BileAcid:ursodeoxycholic acid-3-sulfate,7β-epimer
+QUAL147,BileAcid,Tγ-MCA,BileAcid:tauro-gamma muricholic acid,Murine
+QUAL148,BileAcid,Tω-MCA,BileAcid:tauro-omega muricholic acid,Murine

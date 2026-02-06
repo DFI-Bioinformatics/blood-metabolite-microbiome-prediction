@@ -1,0 +1,870 @@
+---
+title: "Diversity Prediction"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(tidyverse)
+library(here)
+library(patchwork)
+library(missForest)
+library(tidymodels)
+library(ggpubr)
+library(rstatix)
+library(vegan)
+
+```
+
+```{r functions}
+
+get_importance <- function(x) {
+  vip::vi(extract_fit_parsnip(x))
+}
+
+rf_reg_vfold = function(df, workflow, n_folds = 5, seed_value = 333)
+{
+
+  set.seed(seed_value)
+  cv_folds = vfold_cv(df, v = n_folds)
+  
+  cv_results = fit_resamples(
+    workflow,
+    resamples = cv_folds,
+    metrics = metric_set(rmse, rsq, mae),
+    control = control_resamples(
+      save_pred = T, 
+      save_workflow = T,
+      extract = get_importance
+      )
+    )
+
+  df_pred = cv_results %>%
+    collect_predictions() %>%
+    bind_cols(
+      df %>% select(sample_id) %>% slice(cv_results %>% collect_predictions() %>% pull(.row))
+    )
+
+  df_imp = cv_results %>%
+    select(id, .extracts) %>%
+    unnest(cols = .extracts) %>%
+    unnest(cols = .extracts) %>%
+    group_by(Variable) %>%
+    mutate(
+      mean_importance = mean(Importance),
+      sd_importance = sd(Importance)
+    ) %>%
+    ungroup() |> 
+    arrange(desc(mean_importance))
+  
+  df_metrics = collect_metrics(cv_results, summarize = F) |> 
+    group_by(.metric) |> 
+    mutate(mean = mean(.estimate), sd = sd(.estimate)) |> 
+    ungroup()
+  
+  return(list(
+    'df_metrics' = df_metrics, 
+    'df_pred' = df_pred, 
+    'df_imp' = df_imp
+    ))
+}
+
+
+plot_pred_act_vfold_reg = function(res, col = NULL, folds_col_map = NULL, fill = NULL)
+{
+  range_vals <- range(c(res$df_pred$y, res$df_pred$.pred))
+
+  if(!is.null(folds_col_map))
+  {
+  p = res$df_pred %>%
+    ggplot(aes(x = y, y = .pred, fill = id)) +
+    geom_point(size = 3, pch = 21) +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+    labs(x = "Actual Shannon Diversity", y = "Predicted Shannon Diversity") +
+    annotate("text", 
+             x = min(range_vals) + diff(range_vals) * 0.05,
+             y = max(range_vals) - diff(range_vals) * 0.05,
+             label = sprintf("R² = %.2f ± %.2f", 
+                             res$df_metrics[res$df_metrics$.metric == 'rsq',]$mean[1], 
+                             res$df_metrics[res$df_metrics$.metric == 'rsq',]$sd[1]),
+             hjust = .1, vjust = .5) +
+    scale_x_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+    scale_y_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+    theme_bw(base_size = 15) +
+    theme(
+      legend.position = c(0.95, 0.05),
+      legend.justification = c(1, 0),
+      legend.background = element_rect(fill = "white", color = "gray70", linewidth = 0.3)
+  ) +
+    scale_fill_manual(values = folds_col_map, name = "Fold")
+  }
+  
+  if(!is.null(fill))
+  {
+    p = res$df_pred %>%
+      ggplot(aes(x = y, y = .pred)) +
+      geom_point(size = 3, pch = 21, fill = fill) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
+      labs(x = "Actual Shannon Diversity", y = "Predicted Shannon Diversity") +
+      annotate("text", 
+               x = min(range_vals) + diff(range_vals) * 0.05,
+               y = max(range_vals) - diff(range_vals) * 0.05,
+               label = sprintf("R² = %.2f ± %.2f", 
+                               res$df_metrics[res$df_metrics$.metric == 'rsq',]$mean[1], 
+                               res$df_metrics[res$df_metrics$.metric == 'rsq',]$sd[1]),
+               hjust = .1, vjust = .5) +
+      scale_x_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+      scale_y_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+      theme_bw(base_size = 15) +
+      theme(
+        legend.position = c(0.95, 0.05),
+        legend.justification = c(1, 0),
+        legend.background = element_rect(fill = "white", color = "gray70", linewidth = 0.3)
+    )
+  }
+  
+  if(!is.null(col))
+  {
+    p = res$df_pred %>%
+      ggplot(aes(x = y, y = .pred)) +
+      geom_point(size = 3, pch = 21, col = col) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+      labs(x = "Actual Shannon Diversity", y = "Predicted Shannon Diversity") +
+      annotate("text", 
+               x = min(range_vals) + diff(range_vals) * 0.05,
+               y = max(range_vals) - diff(range_vals) * 0.05,
+               label = sprintf("R² = %.2f ± %.2f", 
+                               res$df_metrics[res$df_metrics$.metric == 'rsq',]$mean[1], 
+                               res$df_metrics[res$df_metrics$.metric == 'rsq',]$sd[1]),
+               hjust = .1, vjust = .5) +
+      scale_x_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+      scale_y_continuous(limits = range(c(res$df_pred$y, res$df_pred$.pred)), expand = expansion(mult = 0.05)) +
+      theme_bw(base_size = 15) +
+      theme(
+        legend.position = c(0.95, 0.05),
+        legend.justification = c(1, 0),
+        legend.background = element_rect(fill = "white", color = "gray70", linewidth = 0.3)
+    )
+  }
+  
+  
+  return(p)
+}
+
+get_cor_df = function(mat, y)
+{
+  pear_cor <- apply(mat, 2, function(x) cor.test(x, y, method = "pearson"))
+  pear_df <- data.frame(
+    feature = names(pear_cor),
+    cor_p    = sapply(pear_cor, `[[`, "estimate"),
+    p_p      = sapply(pear_cor, `[[`, "p.value")
+  )
+  pear_df$padj_p <- p.adjust(pear_df$p_p, method = "BH")
+  
+  spear_cor <- apply(mat, 2, function(x) cor.test(x, y, method = "spearman", exact = F))
+  spear_df <- data.frame(
+    feature = names(spear_cor),
+    cor_s    = sapply(spear_cor, `[[`, "estimate"),
+    p_s      = sapply(spear_cor, `[[`, "p.value")
+  )
+  spear_df$padj_s <- p.adjust(spear_df$p_s, method = "BH")
+  
+  df_out <- Reduce(function(a, b) merge(a, b, by = "feature"), list(pear_df, spear_df))
+  
+  return(df_out)
+}
+
+```
+
+```{r}
+
+cohort_colors = c(
+  'AML' = '#D55E00',
+  'MICU' = '#7876B1FF',
+  'Healthy' = '#009E73'
+)
+
+```
+
+# Prep Data
+
+```{r}
+
+df_meta = read.csv(here('data', 'df_meta.csv'))
+df_meta_qual = read.csv(here('data', 'df_meta_qual.csv'))
+df_meta_mp = read.csv(here('data', 'df_meta_mp.csv'))
+
+df_mp = read.csv(here('data', 'df_mp.csv')) |> filter(statq == 'statq_0.20')
+
+mat_qual_fecal = read.csv(here('data', 'AML_fecal', 'mat_qual_fecal.csv')) |> column_to_rownames('X') |> as.matrix()
+mat_qual_plasma = read.csv(here('data', 'AML_plasma', 'mat_qual_plasma.csv')) |> column_to_rownames('X') |> as.matrix()
+
+mat_qual_plasma = as.data.frame(mat_qual_plasma) |> 
+  rownames_to_column('sample_id') |> 
+  select(-QUAL074) |> 
+  left_join(
+    rbind(
+      read.csv(here('data', 'AML_plasma', 'normalized_results_20251217_isoUDCA_MDCA_AMLplasma.csv'), check.names = F),
+      read.csv(here('data', 'AML_plasma', 'normalized_results_isoUDCA_MDCA_AML00112_AML00307.csv'), check.names = F)
+      ) |>  
+      mutate(sampleid = gsub('\\.', '', sampleid)) |> 
+      left_join(df_meta |> select(sampleid = metabolomics_id_plasma, sample_id), by = 'sampleid') |> 
+      select(-sampleid) |> 
+      rename_with(~ case_when(
+        .x == "isoursodeoxycholic acid"  ~ "QUAL074_1",
+        .x == "murideoxycholic acid"  ~ "QUAL074_2",
+        T ~ .x
+      )) |> 
+      mutate(QUAL074_1 = ifelse(is.na(QUAL074_1), 0, QUAL074_1)) |>
+      mutate(QUAL074_2 = ifelse(is.na(QUAL074_2), 0, QUAL074_2)),
+    by = 'sample_id'
+    ) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+
+
+mat_qual_fecal = as.data.frame(mat_qual_fecal) |> 
+  rownames_to_column('sample_id') |> 
+  select(-QUAL074) |> 
+  left_join(
+    read.csv(here('data', 'AML_fecal', 'normalized_results_20251221_isoUDCA_MDCA_AMLfecal.csv'), check.names = F) |>  
+      mutate(sampleid = gsub('\\.', '', sampleid)) |> 
+      left_join(df_meta |> select(sampleid = metabolomics_id_fecal, sample_id), by = 'sampleid') |> 
+      select(-sampleid) |> 
+      rename_with(~ case_when(
+        .x == "isoursodeoxycholic acid"  ~ "QUAL074_1",
+        .x == "murideoxycholic acid"  ~ "QUAL074_2",
+        T ~ .x
+      )) |> 
+      mutate(QUAL074_1 = ifelse(is.na(QUAL074_1), 0, QUAL074_1)) |>
+      mutate(QUAL074_2 = ifelse(is.na(QUAL074_2), 0, QUAL074_2)),
+    by = 'sample_id'
+    ) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+temp = df_meta_qual |> 
+  filter(compound_id %in% colnames(mat_qual_fecal)) |> 
+  mutate(panel_fecal = T) |> 
+  mutate(panel_plasma = ifelse(compound_id %in% colnames(mat_qual_plasma), T, F))
+  
+temp |> 
+  filter(panel_plasma == F) |> 
+  count(hmmf_panel)
+temp |> write.csv('~/Downloads/temp.csv', row.names = F)
+
+
+```
+
+```{r}
+
+mat_mps = df_mp |> 
+  filter(seq_id %in% df_meta$seq_id) |> 
+  left_join(df_meta |> select(sample_id, seq_id), by = 'seq_id') |> 
+  select(sample_id, species, ra) |> 
+  pivot_wider(id_cols = sample_id, names_from = species, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpg = mat_mps |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, genus) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = genus, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpf = mat_mps |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, family) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = family, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpo = mat_mps |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, order) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = order, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpc = mat_mps |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, class) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = class, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+mat_mpp = mat_mps |> 
+  as.data.frame() |> 
+  rownames_to_column('sample_id') |> 
+  pivot_longer(!sample_id, names_to = 'species', values_to = 'ra') |> 
+  left_join(df_meta_mp, by = 'species') |> 
+  
+  group_by(sample_id, phylum) |> 
+  summarize(ra = sum(ra), .groups = 'drop') |> 
+  ungroup() |> 
+  
+  pivot_wider(id_cols = sample_id, names_from = phylum, values_from = ra, values_fill = 0) |> 
+  column_to_rownames('sample_id') |> 
+  as.matrix()
+
+
+```
+
+```{r}
+
+mat_alphadiv = data.frame(
+  shannon = diversity(mat_mps, index = "shannon"),
+  shannon_genus = diversity(mat_mpg, index = "shannon"),
+  inv_simpson = diversity(mat_mps, index = "invsimpson"),
+  richness = specnumber(mat_mps)
+) |> 
+  as.matrix()
+
+```
+
+```{r}
+
+matrices_names = c(
+  'mat_mps', 'mat_mpg', 'mat_mpf', 'mat_mpo', 'mat_mpc', 'mat_mpp',
+  'mat_qual_fecal', 'mat_qual_plasma', 'mat_alphadiv'
+  )
+
+matrices = mget(matrices_names)
+common_rows = Reduce(intersect, lapply(matrices, rownames)) 
+matrices = lapply(matrices, function(m) m[common_rows, ])
+list2env(setNames(matrices, matrices_names), envir = .GlobalEnv)
+
+df_meta = df_meta[match(rownames(get(matrices_names[1])), df_meta$sample_id), ]
+df_mp = df_mp |> filter(seq_id %in% df_meta$seq_id)
+
+```
+
+```{r}
+
+seed_value = 333
+n_folds = 5
+
+pseudo_mat_qual_fecal = min(mat_qual_fecal[mat_qual_fecal > 0], na.rm = T)*0.1
+pseudo_mat_qual_plasma = min(mat_qual_plasma[mat_qual_plasma > 0], na.rm = T)*0.1
+
+```
+
+# Main
+
+## 2a) Fecal vs. Plasma
+
+```{r}
+
+X1 = missForest(mat_qual_fecal)$ximp
+X1 = apply(X1, 2, function(x) log10(x + pseudo_mat_qual_fecal))
+
+X2 = apply(mat_qual_plasma, 2, function(x) log10(x + pseudo_mat_qual_plasma))
+
+
+res_list_fecal = list()
+res_list_plasma = list()
+
+for(col in c('shannon', 'richness', 'inv_simpson'))
+{
+  y = mat_alphadiv[, col]
+
+  # Fecal
+  df = as.data.frame(X1) |> 
+    rownames_to_column('sample_id') |> 
+    mutate(y = y)
+  
+  recipe = recipe(y ~ ., data = df) |> 
+    update_role(sample_id, new_role = "sample_id") |> 
+    step_normalize(all_predictors()) 
+  
+  workflow = workflow() |> add_recipe(recipe)
+  
+  spec = rand_forest(
+    mtry = floor(sqrt(ncol(X1))),
+    min_n = 5,
+    trees = 500
+    ) %>%
+    set_engine("ranger", importance = "permutation") %>%
+    set_mode("regression")
+
+  res_list_fecal[[col]] = rf_reg_vfold(df, workflow |> add_model(spec), n_folds, seed_value)
+
+  # Plasma
+  df = as.data.frame(X2) |>
+    rownames_to_column('sample_id') |>
+    mutate(y = y)
+  
+  recipe = recipe(y ~ ., data = df) |> 
+    update_role(sample_id, new_role = "sample_id") |>
+    step_normalize(all_predictors()) 
+  
+  workflow = workflow() |> add_recipe(recipe)  
+  
+  spec = rand_forest(
+    mtry = floor(sqrt(ncol(X2))),
+    min_n = 5,
+    trees = 500
+    ) %>%
+    set_engine("ranger", importance = "permutation") %>%
+    set_mode("regression")
+
+  res_list_plasma[[col]] = rf_reg_vfold(df, workflow |> add_model(spec), n_folds, seed_value)
+}
+
+```
+
+```{r}
+
+df_p = bind_rows(
+  map_df(names(res_list_plasma), ~
+    res_list_plasma[[.x]]$df_metrics %>%
+      filter(.metric == "rsq") %>%
+      transmute(id, r2 = .estimate, type = "Plasma", div = .x)
+  ),
+  map_df(names(res_list_fecal), ~
+    res_list_fecal[[.x]]$df_metrics %>%
+      filter(.metric == "rsq") %>%
+      transmute(id, r2 = .estimate, type = "Fecal", div = .x)
+  )
+) |> 
+  mutate(div = str_to_title(div))
+
+
+df_sum = df_p %>%
+  group_by(div, type) %>%
+  summarise(
+    mean_r2 = mean(r2, na.rm = T),
+    sd_r2   = sd(r2, na.rm = T),
+    .groups = "drop"
+  )
+
+pvals = df_p %>%
+  group_by(div) %>%
+  wilcox_test(r2 ~ type) %>%
+  mutate(
+    y.position = 0.95,
+    group1 = "Plasma",
+    group2 = "Fecal"
+  ) |> 
+  mutate(p_adj = p.adjust(p, method = 'BH'))
+
+
+p_2a = ggplot() +
+  geom_point(
+    data = df_p, aes(x = div, y = r2, color = type),
+    position = position_dodge(width = 0.6), alpha = 0.4, size = 3
+    ) +
+  geom_point(
+    data = df_sum, aes(x = div, y = mean_r2, color = type, group = type),
+    position = position_dodge(width = 0.6), size = 5, shape = 16
+    ) +
+  geom_errorbar(
+    data = df_sum, aes(x = div, y = mean_r2, ymin = mean_r2 - sd_r2, ymax = mean_r2 + sd_r2, color = type, group = type),
+    position = position_dodge(width = 0.6), width = 0.15, linewidth = 0.8, alpha = .7
+    ) +
+  theme_bw(base_size = 15) +
+  scale_color_manual(values = c("Plasma" = "#B10026", "Fecal" = "darkgoldenrod4")) +
+  labs(x = "Diversity Metric", y = "Test R²", color = "Sample Type") +
+  theme(
+    legend.position = c(0.85, 0.2),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.box.background = element_rect(color = "grey40", linewidth = 0.5)
+  ) +
+  ylim(0,1) 
+```
+
+```{r}
+
+pdf(here('output', paste0('fig2a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_2a
+dev.off()
+
+```
+
+## 2b) Predicted vs. Actual Full
+
+```{r}
+
+p_2b = plot_pred_act_vfold_reg(res_list_plasma$shannon, fill = cohort_colors['AML'])
+
+pdf(here('output', paste0('fig2b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_2b
+dev.off()
+
+```
+
+## 2c) Feature Importance
+
+```{r}
+
+df_p = res_list_plasma$shannon$df_imp |>
+  group_by(id) |> 
+  mutate(imp_scaled = Importance/sum(Importance)) |> 
+  ungroup() |> 
+  group_by(Variable) |> 
+  summarize(
+    imp_mean = mean(imp_scaled),
+    imp_sd = sd(imp_scaled)
+  ) |> 
+  left_join(df_meta_qual |> select(Variable = compound_id, compound), by = 'Variable') |> 
+  slice_max(imp_mean, n = 8, with_ties = F) 
+  
+
+lvls = df_p |> arrange(desc(imp_mean)) |> pull(compound)
+  
+p1 = df_p %>%
+  mutate(compound = factor(compound, levels = rev(lvls))) |>
+  ggplot(aes(x = imp_mean, y = compound)) +
+  geom_errorbarh(
+    aes(xmin = pmax(0, imp_mean - imp_sd), xmax = imp_mean + imp_sd),
+    width = 0.25, color = "grey60", linewidth = 0.6
+  ) +
+  geom_point(fill = cohort_colors['AML'], size = 5, pch = 21, color = "black", stroke = 0.35) +
+  scale_fill_viridis_c(option = "plasma", guide = "none") + 
+  theme_bw(base_size = 15) +
+  labs(x = "RF scaled importance", y = NULL) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(4, 4, 2, 2)
+  )
+
+
+p2 = get_cor_df(mat_qual_plasma, df_meta$shannon) %>%
+  left_join(df_meta_qual %>% select(feature = compound_id, compound), by = "feature") %>%
+  filter(compound %in% lvls) %>%
+  mutate(compound = factor(compound, levels = rev(lvls))) %>%
+  mutate(dir = ifelse(cor_s < 0, 'Neg Cor', 'Pos Cor')) |> 
+  ggplot(aes(x = abs(cor_s), y = compound, fill = dir)) +
+  geom_col(width = 0.7, color = NA) +
+  scale_x_continuous(expand = expansion(mult = c(0, .02)), limits = c(0, 1)) +
+  scale_fill_manual(values = c('Neg Cor' = '#B2182B', 'Pos Cor' = '#2166AC')) +
+  theme_bw(base_size = 15) +
+  labs(x = "|Spearman \u03C1|", y = NULL, fill = NULL) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "top",
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(4, 4, 2, 2)
+  )
+
+
+p_2c = p1 + p2 + 
+  plot_layout(widths = c(0.55, 0.45), guides = "collect", heights = unit(c(1), "null")) & 
+  theme(legend.position = 'top')
+
+p_2c
+
+```
+
+```{r}
+
+cairo_pdf(here('output', paste0('fig2c_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_2c
+dev.off()
+
+
+```
+
+## 2d) Predicted vs. Actual Reduced
+
+```{r}
+
+reg_rf_spec = rand_forest(
+  mtry = floor(sqrt(ncol(X))),
+  min_n = 5,
+  trees = 500
+  ) %>%
+  set_engine("ranger", importance = "permutation") %>%
+  set_mode("regression")
+
+reg_xgb_spec = boost_tree(
+  mtry = floor(sqrt(ncol(X))),
+  trees = 500,
+  min_n = 5
+  ) %>%
+  set_engine("xgboost") |> 
+  set_mode("regression")
+
+reg_linreg_spec = linear_reg() %>% 
+  set_engine("lm") |> 
+  set_mode("regression")
+
+reg_ridge_spec = linear_reg(mixture = 0, penalty = 0.005) %>%
+  set_engine("glmnet") %>%
+  set_mode("regression")
+
+```
+
+```{r}
+
+selected_features  = c(
+  'QUAL016', # IPA
+  'QUAL074_1', # isoUDCA
+  "QUAL072", # isoDCA
+  "QUAL138", # isoCDCA
+  "QUAL058", # DCA
+  "QUAL065", # GDCA
+  "QUAL137", # GLCA-3S
+  "QUAL063" # GCA
+  )
+
+X = apply(mat_qual_plasma, 2, function(x) log10(x + pseudo_mat_qual_plasma))
+X = X[, selected_features]
+
+y = df_meta$shannon
+group = df_meta$study_id
+
+df = as.data.frame(X) |> 
+  rownames_to_column('sample_id') |> 
+  mutate(y = y, group = group)
+
+recipe = recipe(y ~ ., data = df) |> 
+  update_role(sample_id, new_role = "sample_id") |> 
+  update_role(group, new_role = "group") |> 
+  step_normalize(all_predictors()) 
+
+workflow = workflow() |> add_recipe(recipe)
+
+res_rfreg_vfold_aml_reduced = rf_reg_vfold(df, workflow |> add_model(reg_rf_spec), n_folds=5, seed_value = 333)
+res_xgbreg_vfold_aml_reduced = rf_reg_vfold(df, workflow |> add_model(reg_xgb_spec), n_folds=5, seed_value = 333)
+res_ridgereg_vfold_aml_reduced = rf_reg_vfold(df, workflow |> add_model(reg_ridge_spec), n_folds = 5, seed_value = 333)
+res_linreg_vfold_aml_reduced = rf_reg_vfold(df, workflow |> add_model(reg_linreg_spec), n_folds = 5, seed_value = 333)
+
+```
+
+```{r}
+
+p_2d = plot_pred_act_vfold_reg(res_rfreg_vfold_aml_reduced, col = cohort_colors['AML'])
+
+pdf(here('output', paste0('fig2d_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_2d
+dev.off()
+
+```
+
+# Supplemental
+
+## Tables
+
+```{r}
+
+# Model Performance Summary
+
+bind_rows(
+  map_df(names(res_list_plasma), ~
+    res_list_plasma[[.x]]$df_metrics %>%
+      mutate(type = "Plasma", div = .x)
+  ),
+  map_df(names(res_list_fecal), ~
+    res_list_fecal[[.x]]$df_metrics %>%
+      mutate(type = "Fecal", div = .x)
+  )
+) |> 
+  mutate(div = str_to_title(div)) |> 
+  select(type, div, fold = id, metric = .metric, estimate = .estimate) |> 
+  pivot_wider(id_cols = c(type, div, fold), names_from = metric, values_from = estimate) |> 
+  write.csv(here('output', 'tableS5_full_model_perf.csv'), row.names = F)
+
+
+res_rfreg_vfold_aml_reduced$df_metrics |> 
+  select(fold = id, metric = .metric, estimate = .estimate) |> 
+  pivot_wider(id_cols = fold, names_from = metric, values_from = estimate) |> 
+  write.csv(here('output', 'tableS6_reduced_model_perf.csv'), row.names = F)
++
+```
+
+## Metabolites Batch Effects
+
+```{r}
+
+
+df_batches_plasma = read.csv(here('data', 'AML_plasma', 'plasma_metabolomics_batches.csv'))
+df_batches_fecal = read.csv(here('data', 'AML_fecal', 'fecal_metabolomics_batches.csv'))
+
+pca = prcomp(mat_qual_plasma, scale. = T)
+var_exp = round(100 * pca$sdev^2 / sum(pca$sdev^2), 1)
+
+p1 = data.frame(pca$x[, 1:2]) |> 
+  rownames_to_column('sample_id') |> 
+  left_join(df_batches_plasma) |> 
+  ggplot(aes(PC1, PC2, color = batch)) +
+  geom_point(size = 2, alpha = .7) +
+  theme_bw() +
+  labs(
+    x = paste0("PC1 (", var_exp[1], "%)"),
+    y = paste0("PC2 (", var_exp[2], "%)"),
+    title = 'Plasma Metabolites',
+    color = 'Batch'
+  )
+
+pca = prcomp(missForest(mat_qual_fecal)$ximp, scale. = T)
+var_exp = round(100 * pca$sdev^2 / sum(pca$sdev^2), 1)
+
+p2 = data.frame(pca$x[, 1:2]) |> 
+  rownames_to_column('sample_id') |> 
+  left_join(df_batches_fecal) |> 
+  ggplot(aes(PC1, PC2, color = batch)) +
+  geom_point(size = 2, alpha = .7) +
+  theme_bw() +
+  labs(
+    x = paste0("PC1 (", var_exp[1], "%)"),
+    y = paste0("PC2 (", var_exp[2], "%)"),
+    title = 'Fecal Metabolites',
+    color = 'Batch'
+  )
+
+pdf(here('output', paste0('figS1a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 8)
+p1|p2
+dev.off()
+
+
+```
+
+```{r}
+
+
+p1 = df_meta |> 
+  left_join(df_batches_plasma, by = c('sample_id', 'metabolomics_id_plasma')) |> 
+  ggplot(aes(x = batch, y = shannon, color = study_id)) +
+  geom_point() +
+  theme_bw() +
+  scale_x_discrete(guide = guide_axis(angle = 60)) +
+  labs(x = "Batch", y = "Shannon Diversity", color = "Patient")
+
+p2 = df_meta |> 
+  left_join(df_batches_fecal, by = c('sample_id', 'metabolomics_id_fecal')) |> 
+  ggplot(aes(x = batch, y = shannon, color = study_id)) +
+  geom_point() +
+  theme_bw() +
+  scale_x_discrete(guide = guide_axis(angle = 60)) +
+  labs(x = "Batch", y = "Shannon Diversity", color = "Patient")
+
+pdf(here('output', paste0('figS1b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p1
+p2
+dev.off()
+
+```
+
+## Shannon vs. Inv simpson
+
+```{r}
+
+p_s2a = df_meta |> 
+  ggplot(aes(x = shannon, y = inv_simpson)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Shannon Diversity", y = "Inverse Simpson")
+
+pdf(here('output', paste0('figS2a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
+p_s2a
+dev.off()
+
+```
+
+## Feature Imp all metabolites
+
+```{r}
+
+
+df_p = res_list_plasma$shannon$df_imp |>
+  group_by(id) |> 
+  mutate(imp_scaled = Importance/sum(Importance)) |> 
+  ungroup() |> 
+  group_by(Variable) |> 
+  summarize(
+    imp_mean = mean(imp_scaled),
+    imp_sd = sd(imp_scaled)
+  ) |> 
+  left_join(df_meta_qual |> select(Variable = compound_id, compound), by = 'Variable') 
+  
+
+lvls = df_p |> arrange(desc(imp_mean)) |> pull(compound)
+  
+p1 = df_p %>%
+  mutate(compound = factor(compound, levels = rev(lvls))) |>
+  ggplot(aes(x = imp_mean, y = compound)) +
+  geom_errorbarh(
+    aes(xmin = pmax(0, imp_mean - imp_sd), xmax = imp_mean + imp_sd),
+    width = 0.25, color = "grey60", linewidth = 0.6
+  ) +
+  geom_point(fill = cohort_colors['AML'], size = 5, pch = 21, color = "black", stroke = 0.35) +
+  scale_fill_viridis_c(option = "plasma", guide = "none") + 
+  theme_bw(base_size = 15) +
+  labs(x = "RF scaled importance", y = NULL) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(4, 4, 2, 2)
+  )
+
+
+p2 = get_cor_df(mat_qual_plasma, df_meta$shannon) %>%
+  left_join(df_meta_qual %>% select(feature = compound_id, compound), by = "feature") %>%
+  filter(compound %in% lvls) %>%
+  mutate(compound = factor(compound, levels = rev(lvls))) %>%
+  mutate(dir = ifelse(cor_s < 0, 'Neg Cor', 'Pos Cor')) |> 
+  ggplot(aes(x = abs(cor_s), y = compound, fill = dir)) +
+  geom_col(width = 0.7, color = NA) +
+  scale_x_continuous(expand = expansion(mult = c(0, .02)), limits = c(0, 1)) +
+  scale_fill_manual(values = c('Neg Cor' = '#B2182B', 'Pos Cor' = '#2166AC')) +
+  theme_bw(base_size = 15) +
+  labs(x = "|Spearman \u03C1|", y = NULL, fill = NULL) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "top",
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(4, 4, 2, 2)
+  )
+
+
+
+p_s2b = 
+  (p1 + theme(plot.margin = unit(c(0,20,0,0), "pt"))) +
+  (p2 + theme(plot.margin = unit(c(0,0,0,20), "pt"))) +
+    plot_layout(widths = c(0.55, 0.45), guides = "collect", heights = unit(c(1), "null")) & 
+  theme(legend.position = 'top')
+
+
+cairo_pdf(here('output', paste0('figS2b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 12, width = 8)
+p_s2b
+dev.off()
+
+```

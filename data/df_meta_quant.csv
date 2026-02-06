@@ -1,0 +1,52 @@
+compound_id,hmmf_panel,compound,metabolite
+QUANT001,BileAcid,12-oxochenodeoxycholic acid,BileAcid:12-oxochenodeoxycholic acid
+QUANT002,BileAcid,3-oxocholic acid,BileAcid:3-oxocholic acid
+QUANT003,BileAcid,3-oxolithocholic acid,BileAcid:3-oxolithocholic acid
+QUANT004,BileAcid,7-oxodeoxycholic acid,BileAcid:7-oxodeoxycholic acid
+QUANT005,BileAcid,allocholic acid,BileAcid:allocholic acid
+QUANT006,BileAcid,alloisolithocholic acid,BileAcid:alloisolithocholic acid
+QUANT007,BileAcid,alpha-muricholic acid,BileAcid:alpha-muricholic acid
+QUANT008,BileAcid,beta-muricholic acid,BileAcid:beta-muricholic acid
+QUANT009,BileAcid,CDCA,BileAcid:chenodeoxycholic acid
+QUANT010,BileAcid,CA,BileAcid:cholic acid
+QUANT011,BileAcid,DCA,BileAcid:deoxycholic acid
+QUANT012,BileAcid,GCDCA,BileAcid:glycochenodeoxycholic acid
+QUANT013,BileAcid,GCA,BileAcid:glycocholic acid
+QUANT014,BileAcid,GDCA,BileAcid:glycodeoxycholic acid
+QUANT015,BileAcid,GLCA,BileAcid:glycolithocholic acid
+QUANT016,BileAcid,GUDCA,BileAcid:glycoursodeoxycholic acid
+QUANT017,BileAcid,isoCDCA,BileAcid:isochenodeoxycholic acid
+QUANT018,BileAcid,isoDCA,BileAcid:isodeoxycholic acid
+QUANT019,BileAcid,isoLCA,BileAcid:isolithocholic acid
+QUANT020,BileAcid,LCA,BileAcid:lithocholic acid
+QUANT021,BileAcid,taurochenodeoxycholic acid,BileAcid:taurochenodeoxycholic acid
+QUANT022,BileAcid,TCA,BileAcid:taurocholic acid
+QUANT023,BileAcid,TDCA,BileAcid:taurodeoxycholic acid
+QUANT024,BileAcid,TLCA,BileAcid:taurolithocholic acid
+QUANT025,BileAcid,TUDCA,BileAcid:tauroursodeoxycholic acid
+QUANT026,BileAcid,UDCA,BileAcid:ursodeoxycholic acid
+QUANT027,Tryptophan,5-hydroxyindoleacetate,Tryptophan:5-hydroxyindoleacetate
+QUANT028,Tryptophan,anthranilic acid,Tryptophan:anthranilic acid
+QUANT029,Tryptophan,indole-3-acetamide,Tryptophan:indole-3-acetamide
+QUANT030,Tryptophan,indole-3-acetate,Tryptophan:indole-3-acetate
+QUANT031,Tryptophan,indole-3-acrylate,Tryptophan:indole-3-acrylate
+QUANT032,Tryptophan,indole-3-carboxaldehyde,Tryptophan:indole-3-carboxaldehyde
+QUANT033,Tryptophan,indole-3-lactate,Tryptophan:indole-3-lactate
+QUANT034,Tryptophan,IPA,Tryptophan:indole-3-propionate
+QUANT035,Tryptophan,kynurenic acid,Tryptophan:kynurenic acid
+QUANT036,Tryptophan,kynurenine,Tryptophan:kynurenine
+QUANT037,Tryptophan,melatonin,Tryptophan:melatonin
+QUANT038,Tryptophan,niacin,Tryptophan:niacin
+QUANT039,Tryptophan,phenylalanine,Tryptophan:phenylalanine
+QUANT040,Tryptophan,serotonin,Tryptophan:serotonin
+QUANT041,Tryptophan,tryptamine,Tryptophan:tryptamine
+QUANT042,Tryptophan,tryptophan,Tryptophan:tryptophan
+QUANT043,Tryptophan,tyrosine,Tryptophan:tyrosine
+QUANT044,PFBBr,5-aminovalerate,PFBBr:5-aminovalerate
+QUANT045,PFBBr,acetate,PFBBr:acetate
+QUANT046,PFBBr,butyrate,PFBBr:butyrate
+QUANT047,PFBBr,glycine,PFBBr:glycine
+QUANT048,PFBBr,proline,PFBBr:proline
+QUANT049,PFBBr,propionate,PFBBr:propionate
+QUANT050,PFBBr,succinate,PFBBr:succinate
+QUANT051,PFBBr,tyramine,PFBBr:tyramine
