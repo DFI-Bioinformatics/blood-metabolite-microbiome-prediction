@@ -6,8 +6,9 @@ acute myeloid leukemia (AML) patients, medical ICU patients with sepsis, and hea
 
 ## Data Availability
 
-Shotgun metagenomics (NCBI SRA) [PRJNAXXXXXX](https://www.ncbi.nlm.nih.gov/bioproject/PRJNAXXXXXX)
-Targeted metabolomics (MassIVE) [MSVXXXXXXXXX](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?accession=MSVXXXXXXXXX) 
+Shotgun metagenomics (NCBI SRA) [PRJNA1420396](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1420396)
+Targeted metabolomics AML [MSV000100516](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?accession=MSV000100516) 
+Targeted metabolomics MICU [MSV000100781](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?accession=MSV000100781) 
 Processed data files used in the analysis are included in the `data/` folder. 
 
 ## Usage 
