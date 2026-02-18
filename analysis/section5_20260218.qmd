@@ -138,8 +138,10 @@ taxa_family_colors = c(
 ```{r}
 
 df_meta = read.csv(here('data', 'df_meta.csv'))
+
 df_meta_micu = read.csv(here('data', 'df_meta_micu.csv')) |> 
   mutate(group = ifelse(mortality == 'Alive', 'Survivors', 'Non-survivors'))
+
 df_meta_hd = read.csv(here('data', 'df_meta_hd.csv'))
 
 df_meta_qual = read.csv(here('data', 'df_meta_qual.csv'))
@@ -478,35 +480,13 @@ p3 = df_p_taxa |>
   scale_fill_gradient(high = '#0072B5FF', low = 'white', limits = c(0,1)) +
   labs(x = NULL, y = NULL, fill = NULL)
 
-p4 = df_p_taxa |> 
-  left_join(df_meta_combined, by = 'seq_id') |> 
-  left_join(lvls, by = 'sample_id') |> 
-  filter(taxa %in% selected_pathogens) |> 
-  mutate(taxa = factor(taxa, levels = rev(selected_pathogens))) |> 
-  mutate(presence = ifelse(ra == 0, 0, 1)) |> 
-  ggplot(aes(x = sample_id_reordered, y = taxa, fill = presence)) +
-  geom_tile() +
-  theme_bw(base_size = 12) +
-  theme(
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    strip.text.x.top = element_blank(),
-    strip.text.y.right = element_text(angle = 0),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = 'none',
-    plot.margin = unit(c(0,0,0,0), 'cm'),
-    ) +
-  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
-  scale_fill_gradient(high = '#BC3C29FF', low = 'white', limits = c(0,1)) +
-  labs(x = NULL, y = NULL, fill = NULL)
   
 ```
 
 ```{r}
 
 pdf(here('output', paste0('fig5a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 6, width = 8)
-(p1 / p2 / p3 / p4) + plot_layout(heights = c(9,3,3,2))
+(p1 / p2 / p3) + plot_layout(heights = c(9,3,3,2))
 dev.off()
 
 ```

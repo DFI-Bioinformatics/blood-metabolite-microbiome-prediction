@@ -223,36 +223,12 @@ p3 = df_p_taxa |>
   scale_fill_gradient(high = '#0072B5FF', low = 'white', limits = c(0,1)) +
   labs(x = "", y = "", fill = 'RA')
 
-p4 = df_p_taxa |> 
-  left_join(df_meta_combined, by = 'seq_id') |> 
-  left_join(lvls, by = 'sample_id') |> 
-  filter(taxa %in% selected_pathogens) |> 
-  mutate(taxa = factor(taxa, levels = rev(selected_pathogens))) |> 
-  mutate(presence = ifelse(ra == 0, 0, 1)) |> 
-  ggplot(aes(x = sample_id_reordered, y = taxa, fill = presence)) +
-  geom_tile() +
-  theme_bw(base_size = 12) +
-  theme(
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    strip.text.x.top = element_blank(),
-    strip.text.y.right = element_text(angle = 0),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    legend.position = 'none',
-    plot.margin = unit(c(0,0,0,0), 'cm'),
-    ) +
-  facet_grid(.~type, scales = 'free_x', space = 'free_x') +
-  scale_fill_gradient(high = '#BC3C29FF', low = 'white', limits = c(0,1)) +
-  labs(x = "", y = "", fill = 'RA')
-  
-
 ```
 
 ```{r}
 
 pdf(here('output', paste0('fig1a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 6, width = 8)
-(p1 / p2 / p3 / p4) + plot_layout(heights = c(9,3,3,2))
+(p1 / p2 / p3) + plot_layout(heights = c(9,3,3,2))
 dev.off()
 
 
@@ -458,5 +434,63 @@ pdf(here('output', paste0('fig1d_', format(Sys.Date(), "%Y%m%d"), '.pdf')), heig
 p_1d_1 / p_1d_2 + plot_layout(guides = 'collect') & theme(legend.position = 'bottom')
 dev.off()
 
+
+```
+
+# Supplemental
+
+```{r}
+
+library(gtsummary)
+
+# Summary table
+df_meta = read.csv(here('data', 'df_meta.csv'))
+df_meta_micu = read.csv(here('data', 'df_meta_micu.csv'))
+
+```
+
+```{r}
+
+
+df_meta |> 
+  distinct(study_id, age, sex, race, cci_score, ecog, induction_reg, mortality) |>
+  mutate(ecog = as.factor(ecog)) |> 
+  select(-study_id) |>
+  tbl_summary(
+    statistic = list(
+      age ~ "{median} ({p25}, {p75})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    label = list(
+      age ~ "Age, years",
+      sex ~ "Sex",
+      race ~ "Race",
+      cci_score ~ "Charlson Comorbidity Index",
+      ecog ~ "ECOG Performance Status",
+      induction_reg ~ "Induction Regimen",
+      mortality ~ "Mortality"
+    )
+  ) |> as_gt() |> gt::gtsave(here('output/tableS10_AML_summary.docx'))
+
+
+
+
+df_meta_micu |> 
+  distinct(sample_id, age, sex_cat, race, sofa_score, sepsis_cat, group) |>
+  select(-sample_id) |>
+  tbl_summary(
+    statistic = list(
+      age ~ "{median} ({p25}, {p75})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    label = list(
+      age ~ "Age, years",
+      sex_cat ~ "Sex",
+      race ~ "Race",
+      sofa_score ~ "SOFA Score",
+      sepsis_cat ~ "Sepsis Type",
+      group ~ "Mortality"
+    )
+  ) |> as_gt() |> gt::gtsave(here('output/tableS11_MICU_summary.docx'))
 
 ```

@@ -705,79 +705,6 @@ res_rfreg_vfold_aml_reduced$df_metrics |>
   select(fold = id, metric = .metric, estimate = .estimate) |> 
   pivot_wider(id_cols = fold, names_from = metric, values_from = estimate) |> 
   write.csv(here('output', 'tableS6_reduced_model_perf.csv'), row.names = F)
-+
-```
-
-## Metabolites Batch Effects
-
-```{r}
-
-
-df_batches_plasma = read.csv(here('data', 'AML_plasma', 'plasma_metabolomics_batches.csv'))
-df_batches_fecal = read.csv(here('data', 'AML_fecal', 'fecal_metabolomics_batches.csv'))
-
-pca = prcomp(mat_qual_plasma, scale. = T)
-var_exp = round(100 * pca$sdev^2 / sum(pca$sdev^2), 1)
-
-p1 = data.frame(pca$x[, 1:2]) |> 
-  rownames_to_column('sample_id') |> 
-  left_join(df_batches_plasma) |> 
-  ggplot(aes(PC1, PC2, color = batch)) +
-  geom_point(size = 2, alpha = .7) +
-  theme_bw() +
-  labs(
-    x = paste0("PC1 (", var_exp[1], "%)"),
-    y = paste0("PC2 (", var_exp[2], "%)"),
-    title = 'Plasma Metabolites',
-    color = 'Batch'
-  )
-
-pca = prcomp(missForest(mat_qual_fecal)$ximp, scale. = T)
-var_exp = round(100 * pca$sdev^2 / sum(pca$sdev^2), 1)
-
-p2 = data.frame(pca$x[, 1:2]) |> 
-  rownames_to_column('sample_id') |> 
-  left_join(df_batches_fecal) |> 
-  ggplot(aes(PC1, PC2, color = batch)) +
-  geom_point(size = 2, alpha = .7) +
-  theme_bw() +
-  labs(
-    x = paste0("PC1 (", var_exp[1], "%)"),
-    y = paste0("PC2 (", var_exp[2], "%)"),
-    title = 'Fecal Metabolites',
-    color = 'Batch'
-  )
-
-pdf(here('output', paste0('figS1a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 8)
-p1|p2
-dev.off()
-
-
-```
-
-```{r}
-
-
-p1 = df_meta |> 
-  left_join(df_batches_plasma, by = c('sample_id', 'metabolomics_id_plasma')) |> 
-  ggplot(aes(x = batch, y = shannon, color = study_id)) +
-  geom_point() +
-  theme_bw() +
-  scale_x_discrete(guide = guide_axis(angle = 60)) +
-  labs(x = "Batch", y = "Shannon Diversity", color = "Patient")
-
-p2 = df_meta |> 
-  left_join(df_batches_fecal, by = c('sample_id', 'metabolomics_id_fecal')) |> 
-  ggplot(aes(x = batch, y = shannon, color = study_id)) +
-  geom_point() +
-  theme_bw() +
-  scale_x_discrete(guide = guide_axis(angle = 60)) +
-  labs(x = "Batch", y = "Shannon Diversity", color = "Patient")
-
-pdf(here('output', paste0('figS1b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
-p1
-p2
-dev.off()
 
 ```
 
@@ -792,7 +719,7 @@ p_s2a = df_meta |>
   labs(x = "Shannon Diversity", y = "Inverse Simpson")
 
 pdf(here('output', paste0('figS2a_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 4, width = 6)
-p_s2a
+p_s1
 dev.off()
 
 ```
@@ -864,7 +791,7 @@ p_s2b =
 
 
 cairo_pdf(here('output', paste0('figS2b_', format(Sys.Date(), "%Y%m%d"), '.pdf')), height = 12, width = 8)
-p_s2b
+p_s2
 dev.off()
 
 ```
